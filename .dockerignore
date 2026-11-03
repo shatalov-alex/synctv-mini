@@ -21,3 +21,7 @@ scripts/
 **/*.local
 **/*.local.*
 synctv.yaml
+
+# Lite client: built separately and mounted or copied into the web UI directory
+lite-client/node_modules/
+lite-client/dist/
