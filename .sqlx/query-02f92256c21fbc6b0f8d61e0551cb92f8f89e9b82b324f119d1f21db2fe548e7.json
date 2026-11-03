@@ -1,0 +1,76 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT d.id, d.user_id AS \"user_id: UserId\", u.username,\n                   d.paired_by AS \"paired_by: UserId\", d.created_at\n            FROM tv_devices d\n            JOIN users u ON u.id = d.user_id\n            WHERE d.room_id = $1 AND d.revoked_at IS NULL\n            ORDER BY d.created_at DESC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "tv_devices",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id: UserId",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "tv_devices",
+            "name": "user_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "username",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "username"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "paired_by: UserId",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "tv_devices",
+            "name": "paired_by"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "tv_devices",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "02f92256c21fbc6b0f8d61e0551cb92f8f89e9b82b324f119d1f21db2fe548e7"
+}

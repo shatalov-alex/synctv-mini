@@ -31,7 +31,9 @@ fn mfa_method_to_proto(method: AuthFactorMethod) -> synctv_proto::client::MfaMet
         AuthFactorMethod::Totp => synctv_proto::client::MfaMethod::Totp,
         AuthFactorMethod::RecoveryCode => synctv_proto::client::MfaMethod::RecoveryCode,
         AuthFactorMethod::Email => synctv_proto::client::MfaMethod::Email,
-        AuthFactorMethod::Telegram => synctv_proto::client::MfaMethod::Unspecified,
+        AuthFactorMethod::Telegram | AuthFactorMethod::TvPairing => {
+            synctv_proto::client::MfaMethod::Unspecified
+        }
     }
 }
 
@@ -40,9 +42,10 @@ fn login_method_to_proto(method: AuthFactorMethod) -> Option<synctv_proto::clien
         AuthFactorMethod::Password => Some(synctv_proto::client::LoginMethod::Password),
         AuthFactorMethod::WebAuthn => Some(synctv_proto::client::LoginMethod::Passkey),
         AuthFactorMethod::Email => Some(synctv_proto::client::LoginMethod::EmailCode),
-        AuthFactorMethod::Totp | AuthFactorMethod::RecoveryCode | AuthFactorMethod::Telegram => {
-            None
-        }
+        AuthFactorMethod::Totp
+        | AuthFactorMethod::RecoveryCode
+        | AuthFactorMethod::Telegram
+        | AuthFactorMethod::TvPairing => None,
     }
 }
 

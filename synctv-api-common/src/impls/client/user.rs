@@ -37,7 +37,9 @@ fn sensitive_method_to_proto(method: AuthFactorMethod) -> i32 {
         AuthFactorMethod::Totp => SensitiveOperationVerificationMethod::Totp as i32,
         AuthFactorMethod::RecoveryCode => SensitiveOperationVerificationMethod::RecoveryCode as i32,
         AuthFactorMethod::Email => SensitiveOperationVerificationMethod::Email as i32,
-        AuthFactorMethod::Telegram => SensitiveOperationVerificationMethod::Unspecified as i32,
+        AuthFactorMethod::Telegram | AuthFactorMethod::TvPairing => {
+            SensitiveOperationVerificationMethod::Unspecified as i32
+        }
     }
 }
 
@@ -944,7 +946,7 @@ impl ClientApiImpl {
                 .map_err(ApiError::from)?,
             // Never offered as a sensitive-operation method; sensitive_method_from_proto
             // cannot produce it.
-            AuthFactorMethod::Telegram => {
+            AuthFactorMethod::Telegram | AuthFactorMethod::TvPairing => {
                 return Err(ApiError::InvalidInput(
                     "Invalid verification method".to_string(),
                 ));

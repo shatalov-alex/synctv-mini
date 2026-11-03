@@ -44,6 +44,10 @@ pub enum TokenCredentialBinding {
     Telegram {
         telegram_user_id: i64,
     },
+    /// Paired TV; valid while the `tv_devices` row belongs to the user and is not revoked.
+    TvDevice {
+        device_id: i64,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -197,6 +201,10 @@ pub(super) enum TokenCredentialBindingClaims {
         #[serde(rename = "tgu")]
         telegram_user_id: i64,
     },
+    TvDevice {
+        #[serde(rename = "tvd")]
+        device_id: i64,
+    },
 }
 
 impl From<&TokenCredentialBinding> for TokenCredentialBindingClaims {
@@ -218,6 +226,9 @@ impl From<&TokenCredentialBinding> for TokenCredentialBindingClaims {
             },
             TokenCredentialBinding::Telegram { telegram_user_id } => Self::Telegram {
                 telegram_user_id: *telegram_user_id,
+            },
+            TokenCredentialBinding::TvDevice { device_id } => Self::TvDevice {
+                device_id: *device_id,
             },
         }
     }
@@ -323,6 +334,11 @@ impl Claims {
             TokenCredentialBindingClaims::Telegram { telegram_user_id } => {
                 TokenCredentialBinding::Telegram {
                     telegram_user_id: *telegram_user_id,
+                }
+            }
+            TokenCredentialBindingClaims::TvDevice { device_id } => {
+                TokenCredentialBinding::TvDevice {
+                    device_id: *device_id,
                 }
             }
         }

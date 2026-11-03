@@ -205,6 +205,11 @@ pub use room::{
     local_room_opaque_password_registration_session_store,
 };
 pub use room::{
+    normalize_tv_pairing_code, tv_pairing_secret_hash, TvPairingPoll, TvPairingStart,
+    TV_PAIRING_CODE_ALPHABET, TV_PAIRING_CODE_LEN, TV_PAIRING_POLL_INTERVAL_MS,
+    TV_PAIRING_TTL_SECS, TV_REVOKE_KICK_COOLDOWN_SECS,
+};
+pub use room::{
     room_opaque_password_login_session_store_from_shared_state_profile,
     room_opaque_password_registration_session_store_from_shared_state_profile,
 };

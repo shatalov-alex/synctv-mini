@@ -5636,3 +5636,64 @@ message RedeemRoomInviteResponse {
   LoginResponse login = 1;
   string room_id = 2;
 }
+
+// TV pairing. The TV starts a pairing and shows `code` (and a QR for `/pair?code=<code>`),
+// keeps `pairing_secret` to itself, and polls. A signed-in room member claims the code for a
+// room; the TV's next poll returns tokens for a new TV user that joined that room.
+message StartTvPairingRequest {}
+
+message StartTvPairingResponse {
+  // 6 chars from A-Z and 2-9 without O, 0, I, 1, L.
+  string code = 1;
+  // Only the TV ever sees this; tokens are only delivered to its holder.
+  string pairing_secret = 2;
+  // Unix seconds.
+  int64 expires_at = 3;
+  int32 poll_interval_ms = 4;
+}
+
+message PollTvPairingRequest {
+  string pairing_secret = 1 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 128
+  }];
+}
+
+message PollTvPairingResponse {
+  // "PENDING", "CLAIMED" or "EXPIRED". Tokens are delivered once: after a CLAIMED response
+  // the pairing is gone and later polls return EXPIRED.
+  string status = 1;
+  // Only when CLAIMED.
+  LoginResponse login = 2;
+  // Only when CLAIMED.
+  string room_id = 3;
+}
+
+message ClaimTvPairingRequest {
+  // Case-insensitive.
+  string code = 1 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 16
+  }];
+  string room_id = 2 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 64
+  }];
+}
+
+message ClaimTvPairingResponse {}
+
+message TvDevice {
+  string user_id = 1;
+  string name = 2;
+  // Unix seconds.
+  int64 paired_at = 3;
+  // User id of whoever claimed the code; empty if that account is gone.
+  string paired_by = 4;
+}
+
+message ListTvDevicesResponse {
+  repeated TvDevice tvs = 1;
+}
+
+message RevokeTvDeviceResponse {}

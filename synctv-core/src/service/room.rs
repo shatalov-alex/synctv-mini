@@ -117,6 +117,12 @@ use entries_request::{normalize_delete_entries_request, pending_delete_entries_p
 mod guest_access;
 mod invites;
 pub use invites::{invite_token_hash, INVITED_GUEST_PERMISSIONS};
+mod tv_pairing;
+pub use tv_pairing::{
+    normalize_tv_pairing_code, tv_pairing_secret_hash, TvPairingPoll, TvPairingStart,
+    TV_PAIRING_CODE_ALPHABET, TV_PAIRING_CODE_LEN, TV_PAIRING_POLL_INTERVAL_MS,
+    TV_PAIRING_TTL_SECS, TV_REVOKE_KICK_COOLDOWN_SECS,
+};
 mod join;
 mod lifecycle;
 mod media_playback_chat;
@@ -126,7 +132,7 @@ pub use member_display::{
     UpdateMemberDisplayTagWithOutboxRequest, UpdateMemberRemarkNameWithOutboxRequest,
 };
 mod member_kick;
-pub use member_kick::KickMemberOutboxOptions;
+pub use member_kick::{KickMemberOutboxOptions, MAX_KICK_COOLDOWN_SECONDS};
 mod member_leave;
 mod member_mutations;
 pub use member_mutations::{AddMemberWithOutboxRequest, AdminAddMemberWithOutboxRequest};

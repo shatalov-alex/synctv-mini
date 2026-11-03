@@ -131,46 +131,64 @@ impl RoomService {
         }
 
         if let Err(error) = self
-            .add_member_with_outbox(AddMemberWithOutboxRequest {
-                room_id: invite.room_id,
-                actor_id: invite.created_by,
+            .admit_restricted_guest(
+                invite.room_id,
+                invite.created_by,
                 target_user_id,
-                role: RoomRole::Admin,
-                remark_name: display_name,
-                display_tag: String::new(),
-                notify: false,
-                outbox_event_factory: None,
-            })
+                display_name,
+            )
             .await
         {
             Self::release_invite_use(&invites, invite.id).await;
             return Err(error);
         }
+        Ok(true)
+    }
+
+    /// Add `target_user_id` as a room admin stripped to [`INVITED_GUEST_PERMISSIONS`], acting
+    /// as `room_creator_id`. Used for invite links and paired TVs. If restricting fails the
+    /// member is removed again, so a full admin is never left behind.
+    pub(super) async fn admit_restricted_guest(
+        &self,
+        room_id: RoomId,
+        room_creator_id: UserId,
+        target_user_id: UserId,
+        display_name: String,
+    ) -> Result<()> {
+        self.add_member_with_outbox(AddMemberWithOutboxRequest {
+            room_id,
+            actor_id: room_creator_id,
+            target_user_id,
+            role: RoomRole::Admin,
+            remark_name: display_name,
+            display_tag: String::new(),
+            notify: false,
+            outbox_event_factory: None,
+        })
+        .await?;
 
         // Added as a full admin first: strip everything but playback before any token exists.
-        // If that fails, the member must not stay behind as a full admin.
         if let Err(error) = self
             .set_member_permission(
-                invite.room_id,
-                invite.created_by,
+                room_id,
+                room_creator_id,
                 target_user_id,
                 0,
                 INVITED_GUEST_REMOVED,
             )
             .await
         {
-            if let Err(leave_error) = self.leave_room(invite.room_id, target_user_id).await {
+            if let Err(leave_error) = self.leave_room(room_id, target_user_id).await {
                 tracing::error!(
                     error = %leave_error,
-                    room_id = %invite.room_id,
+                    room_id = %room_id,
                     user_id = %target_user_id,
-                    "Failed to remove invited member after restricting permissions failed"
+                    "Failed to remove restricted guest after restricting permissions failed"
                 );
             }
-            Self::release_invite_use(&invites, invite.id).await;
             return Err(error);
         }
-        Ok(true)
+        Ok(())
     }
 
     async fn release_invite_use(invites: &RoomInviteRepository, invite_id: i64) {
