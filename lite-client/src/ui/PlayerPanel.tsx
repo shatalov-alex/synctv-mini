@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useState } from 'preact/hooks';
 import { formatTime } from '../format';
 import { haptic, onTgFullscreenChange, setTgFullscreen, tgFullscreenSupported } from '../telegram';
 import type { PlayerBinding } from './usePlayer';
@@ -50,7 +50,8 @@ function useFullscreen(container: HTMLElement | null) {
     };
   }, []);
 
-  useEffect(() => {
+  // Layout effect: lock page scroll in the same frame the player goes fullscreen.
+  useLayoutEffect(() => {
     document.documentElement.classList.toggle('player-max', on);
     return () => document.documentElement.classList.remove('player-max');
   }, [on]);

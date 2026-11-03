@@ -49,7 +49,13 @@ function fakePlayer() {
     ready: true,
     muted: false,
     currentSource: null as unknown,
-    on: () => () => {},
+    buffering: false,
+    listeners: [] as Array<(e: { type: string }) => void>,
+    on: (l: (e: { type: string }) => void) => {
+      p.listeners.push(l);
+      return () => {};
+    },
+    emit: (type: string) => p.listeners.forEach((l) => l({ type })),
     load: async (source: unknown) => {
       p.currentSource = source;
       calls.push(source ? 'load' : 'unload');
@@ -380,5 +386,60 @@ describe('RoomSyncEngine on phones (backgrounding)', () => {
     setVisibility('visible');
     await flush();
     expect(FakeWS.all).toHaveLength(1);
+  });
+});
+
+describe('RoomSyncEngine post-start settle', () => {
+  it('re-syncs once after a forced seek+play starts late, then stops', async () => {
+    const { ws, player } = await setup();
+    ws.push(playbackEvent(playback));
+    ws.push(stateEvent(state()));
+    await flush();
+    expect(player.calls).toEqual(['load', 'seek:50', 'play']);
+    player.calls.length = 0;
+    // Buffering ate 0.8 s; when measured (1 s later) the room is at 51.8, the player at 51.
+    vi.setSystemTime(T0 + 800);
+    player.emit('playing');
+    player.currentTime = 51;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(player.calls).toEqual(['seek:51.8']);
+    // A later stall/restart does not trigger another settle.
+    player.calls.length = 0;
+    player.currentTime = 52; // room at 52.8 a second later: 0.8 s off again
+    player.emit('playing');
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(player.calls).toEqual([]);
+  });
+
+  it('leaves small drift alone', async () => {
+    const { ws, player } = await setup();
+    ws.push(playbackEvent(playback));
+    ws.push(stateEvent(state()));
+    await flush();
+    player.calls.length = 0;
+    vi.setSystemTime(T0 + 100);
+    player.emit('playing');
+    player.currentTime = 51; // room at 51.1 when measured
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(player.calls).toEqual([]);
+  });
+});
+
+describe('RoomSyncEngine precise sync while paused', () => {
+  it('a paused room lines up within 0.2 s, and the following start keeps it', async () => {
+    const { ws, player } = await setup();
+    ws.push(playbackEvent(playback));
+    ws.push(stateEvent(state({ isPlaying: false, position: 0 })));
+    await flush();
+    player.calls.length = 0;
+    player.currentTime = 1.0; // under the 1.2 s auto-seek threshold
+    ws.push(stateEvent(state({ isPlaying: false, position: 0, version: '2' })));
+    await flush();
+    expect(player.calls).toEqual(['seek:0']);
+    player.calls.length = 0;
+    player.currentTime = 0.5;
+    ws.push(stateEvent(state({ isPlaying: true, position: 0, version: '3' })));
+    await flush();
+    expect(player.calls).toEqual(['seek:0', 'play']);
   });
 });

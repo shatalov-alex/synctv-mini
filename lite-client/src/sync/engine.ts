@@ -45,6 +45,8 @@ const INIT_TIMEOUT_MS = 20_000;
  * cheap: observing re-sends the full state.
  */
 export const BACKGROUND_RECONNECT_MS = 15_000;
+/** Past the sync cooldown, so the first frames have played before measuring drift. */
+const SETTLE_DELAY_MS = SYNC_COOLDOWN_MS + 200;
 const MAX_ERROR_RELOADS = 3;
 /** "Completed" tolerance for play-from-end (custom_video_player.dart:1769). */
 const ENDED_TOLERANCE_S = 0.5;
@@ -120,6 +122,9 @@ export class RoomSyncEngine implements SyncEngine {
   private readonly freeMode: boolean;
   private readonly unsubscribePlayer: () => void;
   private hiddenAt = 0;
+  /** A forced seek+play is waiting for playback to actually start (see settle()). */
+  private settlePending = false;
+  private settleTimer: ReturnType<typeof setTimeout> | null = null;
   /** Bumped per openSocket so an older, slower ticket request can't open a second socket. */
   private connectGen = 0;
   private lifecycleBound = false;
@@ -142,6 +147,7 @@ export class RoomSyncEngine implements SyncEngine {
       if (event.type === 'mutedautoplay') this.update({ autoMuted: true, needsGesture: false });
       else if (event.type === 'autoplayblocked') this.update({ needsGesture: true });
       else if (event.type === 'error') this.onPlayerError(event.message || 'Playback error');
+      else if (event.type === 'playing') this.settle();
     });
   }
 
@@ -213,6 +219,7 @@ export class RoomSyncEngine implements SyncEngine {
   dispose(): void {
     this.disposed = true;
     this.bindLifecycle(false);
+    if (this.settleTimer !== null) clearTimeout(this.settleTimer);
     this.clock.stop();
     if (this.loopTimer !== null) clearInterval(this.loopTimer);
     this.loopTimer = null;
@@ -226,7 +233,13 @@ export class RoomSyncEngine implements SyncEngine {
 
   private async apply(s: SyncState, opts: { forceSeek?: boolean; skipPlayerSync?: boolean } = {}): Promise<void> {
     if (isStale(s, this.cur)) return;
-    const sourceChanged = !!this.cur && !sameSource(this.cur, s);
+    const prev = this.cur;
+    const sourceChanged = !!prev && !sameSource(prev, s);
+    // Deviation from the official client: seek precisely (0.2 s) while the room
+    // is paused, when it starts playing and when its speed changes. These are
+    // jumps anyway, and a sub-1.2 s offset left there would otherwise carry
+    // into the whole film.
+    const precise = !s.playing || (!!prev && (!prev.playing || prev.speed !== s.speed));
     this.cur = s;
     if (!hasSource(s)) {
       this.unload();
@@ -242,7 +255,7 @@ export class RoomSyncEngine implements SyncEngine {
       await this.load(res.source);
       return;
     }
-    await this.performSync(s, !!opts.forceSeek || sourceChanged);
+    await this.performSync(s, !!opts.forceSeek || sourceChanged || precise);
   }
 
   /** `playback` resource: player-ready source, no timing (merge keeps current timing). */
@@ -329,12 +342,37 @@ export class RoomSyncEngine implements SyncEngine {
       if (plan.pause) this.player.pause();
       if (plan.seek !== null) this.player.seek(plan.seek);
       if (!isCurrent()) return;
-      if (plan.play) await this.player.play(); // muted autoplay fallback lives in the player
+      if (plan.play) {
+        // Seek + start (join, media change, resync): the time spent buffering
+        // before frames move is lost, so check once more after it starts.
+        if (forceSeek && plan.seek !== null) this.settlePending = true;
+        await this.player.play(); // muted autoplay fallback lives in the player
+      }
     } finally {
       setTimeout(() => {
         if (gen === this.syncGen) this.syncing = false;
       }, SYNC_COOLDOWN_MS);
     }
+  }
+
+  /**
+   * Deviation from the official client: a forced seek+play lands late by the
+   * buffering time (0.3–0.8 s on phones), which the 1.2 s loop never fixes.
+   * Once playback really starts, re-sync at the manual 0.2 s threshold — once,
+   * so a slow source can't loop.
+   */
+  private settle(): void {
+    if (!this.settlePending) return;
+    this.settlePending = false;
+    if (this.settleTimer !== null) clearTimeout(this.settleTimer);
+    this.settleTimer = setTimeout(() => {
+      this.settleTimer = null;
+      const cur = this.cur;
+      if (this.disposed || this.syncing || !cur || !cur.playing || this.player.paused || this.player.buffering) return;
+      void this.performSync(cur, true).then(() => {
+        this.settlePending = false; // this pass's own seek+play doesn't settle again
+      });
+    }, SETTLE_DELAY_MS);
   }
 
   private retryLoop(): void {
