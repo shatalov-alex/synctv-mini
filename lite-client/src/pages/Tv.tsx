@@ -6,10 +6,13 @@ import { ApiError } from '../api/http';
 import { createPairing, pollPairing, pollRetryDelayMs, startRetryDelayMs, type TvPairing } from '../api/tv';
 import { formatTime } from '../format';
 import { pairLink } from '../links';
+import type { VideoPlayer } from '../player/player';
+import type { SyncEngine } from '../sync/types';
 import { usePlayer, usePlayerTick } from '../ui/usePlayer';
 import { tvAction } from './tvKeys';
 
 const tvApi = createApi('synctv-lite.tv');
+const KEY_SESSION_DEDUPE_MS = 400;
 const ROOM_KEY = 'synctv-lite.tv.room';
 const SEEK_STEP_S = 10;
 const OVERLAY_MS = 4000;
@@ -163,6 +166,37 @@ function Pairing({ onPaired, notice }: { onPaired: (roomId: string) => void; not
   );
 }
 
+/** The room's intended state; the element's own state only before the first snapshot. */
+function roomPlaying(engine: SyncEngine, player: VideoPlayer): boolean {
+  const state = engine.snapshot().state;
+  return state ? state.playing : !player.paused;
+}
+
+type SessionAction = 'play' | 'pause' | 'seekbackward' | 'seekforward' | 'previoustrack' | 'nexttrack';
+
+function bindMediaSession(handlers: Record<SessionAction, () => void>): () => void {
+  const session = typeof navigator !== 'undefined' ? navigator.mediaSession : undefined;
+  if (!session || !session.setActionHandler) return () => {};
+  const bound: SessionAction[] = [];
+  for (const action of Object.keys(handlers) as SessionAction[]) {
+    try {
+      session.setActionHandler(action, () => handlers[action]());
+      bound.push(action);
+    } catch {
+      // action not supported by this browser
+    }
+  }
+  return () => {
+    for (const action of bound) {
+      try {
+        session.setActionHandler(action, null);
+      } catch {
+        // ignore
+      }
+    }
+  };
+}
+
 function Watch({ roomId, onUnpair }: { roomId: string; onUnpair: (reason?: string) => void }) {
   const binding = usePlayer(tvApi, roomId);
   const { engine, player, snapshot, videoRef } = binding;
@@ -176,6 +210,8 @@ function Watch({ roomId, onUnpair }: { roomId: string; onUnpair: (reason?: strin
   const [overlay, setOverlay] = useState(true);
   const overlayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const unpairArmed = useRef(0);
+  /** When we last handled a remote key: one press may also arrive as a Media Session action. */
+  const lastKeyAt = useRef(0);
 
   const showOverlay = () => {
     setOverlay(true);
@@ -195,6 +231,7 @@ function Watch({ roomId, onUnpair }: { roomId: string; onUnpair: (reason?: strin
       const action = tvAction(event.key, event.keyCode);
       if (!action || !engine || !player) return;
       event.preventDefault();
+      lastKeyAt.current = Date.now();
       showOverlay();
       const snap = engine.snapshot();
       // First OK after a blocked/muted autoplay is the gesture that unlocks audio.
@@ -204,8 +241,10 @@ function Watch({ roomId, onUnpair }: { roomId: string; onUnpair: (reason?: strin
       }
       switch (action) {
         case 'toggle':
-          if (player.paused) engine.play();
-          else engine.pause();
+          // Decide from the room, not the element: TV browsers may already have
+          // toggled the <video> for this key, and reading it would invert us.
+          if (roomPlaying(engine, player)) engine.pause();
+          else engine.play();
           break;
         case 'play':
           engine.play();
@@ -238,9 +277,28 @@ function Watch({ roomId, onUnpair }: { roomId: string; onUnpair: (reason?: strin
     return () => document.removeEventListener('keydown', onKey);
   }, [engine, player]);
 
+  // Media keys (remote play/pause, hardware keys) arrive as Media Session
+  // actions; handling them stops the browser from toggling the element itself.
+  useEffect(() => {
+    if (!engine || !player) return;
+    const fromSession = (fn: () => void) => () => {
+      if (Date.now() - lastKeyAt.current < KEY_SESSION_DEDUPE_MS) return; // same press, already handled
+      showOverlay();
+      fn();
+    };
+    return bindMediaSession({
+      play: fromSession(() => (engine.snapshot().needsGesture || engine.snapshot().autoMuted ? engine.unlock() : engine.play())),
+      pause: fromSession(() => engine.pause()),
+      seekbackward: fromSession(() => engine.seek(player.currentTime - SEEK_STEP_S)),
+      seekforward: fromSession(() => engine.seek(player.currentTime + SEEK_STEP_S)),
+      previoustrack: fromSession(() => void engine.prev()),
+      nexttrack: fromSession(() => void engine.next()),
+    });
+  }, [engine, player]);
+
   const duration = player ? player.duration : 0;
   const current = player ? player.currentTime : 0;
-  const paused = player ? player.paused : true;
+  const playing = !!engine && !!player && roomPlaying(engine, player);
   const nothing = !snapshot || !snapshot.source;
   const armed = Date.now() - unpairArmed.current < 3000;
 
@@ -251,13 +309,14 @@ function Watch({ roomId, onUnpair }: { roomId: string; onUnpair: (reason?: strin
       {snapshot && (snapshot.needsGesture || snapshot.autoMuted) && (
         <div class="tv-center small">Press OK to {snapshot.needsGesture ? 'start' : 'turn on sound'}</div>
       )}
-      {(overlay || paused) && !nothing && (
+      {(overlay || !playing) && !nothing && (
         <div class="tv-overlay">
           <div class="tv-bar">
             <div class="tv-bar-fill" style={{ width: duration ? `${Math.min(100, (current / duration) * 100)}%` : '0%' }} />
           </div>
           <div class="tv-meta">
-            <span>{paused ? '⏸' : '▶'}</span>
+            {/* Same convention as the phone: the icon is what OK will do. */}
+            <span>{playing ? '⏸' : '▶'}</span>
             <span>
               {formatTime(current)}
               {duration ? ` / ${formatTime(duration)}` : ''}
