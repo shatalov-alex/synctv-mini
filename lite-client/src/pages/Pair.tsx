@@ -8,6 +8,7 @@ import { CodeInput } from '../ui/PairTvPanel';
 import type { MyRoom, User } from '../api/types';
 import { errorMessage } from '../format';
 import { navigate, roomPath } from '../router';
+import { setRemoteModeFor } from '../remoteMode';
 import { useBackButtonEffect } from '../telegram';
 
 export function Pair({ code, me }: { code: string; me: User | null }) {
@@ -46,6 +47,7 @@ export function Pair({ code, me }: { code: string; me: User | null }) {
     setError('');
     try {
       await claimPairing(api, normalized, selected);
+      setRemoteModeFor(selected, true); // the room opens here as the TV's remote
       setState('done');
     } catch (e) {
       setState('idle');
@@ -60,7 +62,7 @@ export function Pair({ code, me }: { code: string; me: User | null }) {
         <section class="card stack">
           <p class="ok">TV paired ✓</p>
           <button class="primary" onClick={() => navigate(roomPath(selected), true)}>
-            Open the room here
+            Open the remote
           </button>
         </section>
       ) : (

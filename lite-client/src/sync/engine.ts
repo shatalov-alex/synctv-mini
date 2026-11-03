@@ -25,6 +25,7 @@ import {
   type UpdateKind,
 } from './protocol';
 import {
+  expectedPosition,
   hasSource,
   isStale,
   needsCorrection,
@@ -79,6 +80,8 @@ export interface RoomSyncEngineOptions {
   origin?: string;
   /** Disables auto-seek and the 2 s loop (official "free mode"); default false. */
   freeMode?: boolean;
+  /** Start in remote mode (no local playback). */
+  remote?: boolean;
 }
 
 export class RoomSyncEngine implements SyncEngine {
@@ -97,6 +100,7 @@ export class RoomSyncEngine implements SyncEngine {
     error: null,
     navigating: false,
     accessLost: null,
+    remote: false,
   };
 
   // sync state
@@ -136,6 +140,10 @@ export class RoomSyncEngine implements SyncEngine {
   ) {
     this.origin = options.origin || location.origin;
     this.freeMode = !!options.freeMode;
+    if (options.remote) {
+      this.snap = { ...this.snap, remote: true };
+      player.setPreload('metadata');
+    }
     this.clock = new ServerClock((sent) =>
       withTimeout(
         api.request('GET', '/api/public/time', undefined, { auth: false, query: { clientSentAtNanos: sent } }),
@@ -214,6 +222,28 @@ export class RoomSyncEngine implements SyncEngine {
       return;
     }
     if (this.cur) void this.performSync(this.cur, true);
+  }
+
+  setRemote(on: boolean): void {
+    if (on === this.snap.remote) return;
+    this.update({ remote: on, needsGesture: false });
+    if (on) {
+      this.settlePending = false;
+      this.player.setPreload('metadata');
+      this.player.pause();
+      return;
+    }
+    // Called from a tap: playing here is allowed, with sound.
+    this.player.setPreload('auto');
+    this.restoreAudio();
+    if (this.cur) void this.performSync(this.cur, true);
+  }
+
+  position(): number {
+    if (!this.snap.remote) return this.player.currentTime;
+    const cur = this.cur;
+    if (!cur) return 0;
+    return expectedPosition(cur, this.clock.now(), this.player.duration).position;
   }
 
   dispose(): void {
@@ -329,6 +359,10 @@ export class RoomSyncEngine implements SyncEngine {
   /** One sync pass: rate → pause → seek → play, then an 800 ms cooldown. */
   private async performSync(s: SyncState, forceSeek = false): Promise<void> {
     if (!this.loadedReady || !this.player.ready) return;
+    if (this.snap.remote) {
+      this.player.pause(); // remote mode: the element only provides the duration
+      return;
+    }
     const gen = ++this.syncGen;
     const isCurrent = () => gen === this.syncGen && this.cur === s && !this.disposed;
     this.syncing = true;
@@ -362,7 +396,7 @@ export class RoomSyncEngine implements SyncEngine {
    * so a slow source can't loop.
    */
   private settle(): void {
-    if (!this.settlePending) return;
+    if (!this.settlePending || this.snap.remote) return;
     this.settlePending = false;
     if (this.settleTimer !== null) clearTimeout(this.settleTimer);
     this.settleTimer = setTimeout(() => {
@@ -376,6 +410,7 @@ export class RoomSyncEngine implements SyncEngine {
   }
 
   private retryLoop(): void {
+    if (this.snap.remote) return;
     if (this.syncing || this.freeMode || !this.cur || !this.loadedReady || !this.player.ready) return;
     if (!this.resolvedFor(this.cur)) return;
     if (needsCorrection(this.cur, this.playerView(), this.clock.now(), { live: this.snap.live })) {
@@ -428,17 +463,24 @@ export class RoomSyncEngine implements SyncEngine {
 
   private userAction(kind: UpdateKind, arg?: number): void {
     const cur = this.cur;
-    if (!cur || !this.loadedReady || !this.player.ready) return;
+    const remote = this.snap.remote;
+    // Remote mode needs no loaded player: positions come from the room clock.
+    if (!cur || (!remote && (!this.loadedReady || !this.player.ready))) return;
+    if (remote && !hasSource(cur)) return;
     const live = this.snap.live;
     if (live && kind === 'seek') return;
-    this.restoreAudio();
+    if (!remote) this.restoreAudio();
     this.errorReloads = 0;
     const duration = this.player.duration;
     const clamp = (t: number) => Math.max(0, duration > 0 ? Math.min(t, duration) : t);
+    const here = this.position();
 
-    // 1) apply locally first
+    // 1) apply locally first (remote mode: nothing plays here)
     let playing = cur.playing;
-    if (kind === 'play') {
+    if (remote) {
+      if (kind === 'play') playing = true;
+      else if (kind === 'pause') playing = false;
+    } else if (kind === 'play') {
       if (duration > 0 && this.player.currentTime >= duration - ENDED_TOLERANCE_S) this.player.seek(0);
       void this.player.play();
       playing = true;
@@ -457,7 +499,9 @@ export class RoomSyncEngine implements SyncEngine {
     // 2) command
     const opId = uuidv4();
     const t = Math.round(this.clock.now());
-    const position = clamp(kind === 'seek' ? arg || 0 : this.player.currentTime);
+    let position = clamp(kind === 'seek' ? arg || 0 : here);
+    // Play from the end restarts (the local branch seeks the player to 0).
+    if (kind === 'play' && duration > 0 && here >= duration - ENDED_TOLERANCE_S) position = 0;
     const message = playbackUpdateMessage({
       kind,
       playing,
@@ -476,7 +520,7 @@ export class RoomSyncEngine implements SyncEngine {
       ...cur,
       playing,
       position: live ? cur.position : position,
-      speed: kind === 'speed' && arg ? arg : this.player.playbackRate,
+      speed: kind === 'speed' && arg ? arg : remote ? cur.speed : this.player.playbackRate,
       generatedAtMs: t,
       opId,
     };

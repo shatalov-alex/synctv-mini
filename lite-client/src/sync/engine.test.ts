@@ -78,6 +78,7 @@ function fakePlayer() {
       p.playbackRate = r;
     },
     setMuted: () => {},
+    setPreload: () => {},
   };
   return p;
 }
@@ -473,5 +474,59 @@ describe('RoomSyncEngine playback errors', () => {
     await flush();
     expect((player.currentSource as { url: string }).url).toBe('https://x/a.mp4');
     expect(player.calls[0]).toBe('load');
+  });
+});
+
+describe('RoomSyncEngine remote mode (a paired TV plays, the phone controls)', () => {
+  async function setupRemote() {
+    const player = fakePlayer();
+    const api = fakeApi();
+    const engine = new RoomSyncEngine(api as unknown as ApiClient, player as unknown as VideoPlayer, {
+      origin: 'https://tv.example',
+      remote: true,
+    });
+    engine.connect('room_1');
+    await flush();
+    const ws = FakeWS.all[FakeWS.all.length - 1];
+    ws.open();
+    ws.push(playbackEvent(playback));
+    ws.push(stateEvent(state()));
+    await flush();
+    return { player, api, engine, ws };
+  }
+  const played = (calls: string[]) => calls.filter((c) => c === 'play' || c.startsWith('seek'));
+
+  it('never plays or seeks locally, even through the 2 s loop', async () => {
+    const { player, engine } = await setupRemote();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(played(player.calls)).toEqual([]);
+    expect(player.calls).toContain('load'); // metadata only, for the duration
+    expect(engine.snapshot().remote).toBe(true);
+  });
+
+  it('positions come from the room clock; commands carry them', async () => {
+    const { player, engine, ws } = await setupRemote();
+    vi.setSystemTime(T0 + 4000);
+    expect(engine.position()).toBeCloseTo(54, 1);
+    engine.pause();
+    const [pause] = ws.updates();
+    expect(pause).toMatchObject({ type: 2, playing: false });
+    expect(pause.position).toBeCloseTo(54, 1);
+    engine.seek(engine.position() + 10);
+    expect(ws.updates()[1].position).toBeCloseTo(64, 1);
+    engine.play();
+    expect(ws.updates()[2]).toMatchObject({ playing: true });
+    expect(played(player.calls)).toEqual([]);
+  });
+
+  it('switching to "watch here" starts the phone in sync', async () => {
+    const { player, engine } = await setupRemote();
+    vi.setSystemTime(T0 + 3000);
+    player.calls.length = 0;
+    engine.setRemote(false);
+    await flush();
+    expect(player.calls).toEqual(['seek:53', 'play']);
+    engine.setRemote(true);
+    expect(player.paused).toBe(true);
   });
 });

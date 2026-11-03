@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useState } from 'preact/hooks';
 import { formatTime } from '../format';
 import { haptic, onTgFullscreenChange, setTgFullscreen, tgFullscreenSupported } from '../telegram';
 import type { PlayerBinding } from './usePlayer';
-import { usePlayerTick } from './usePlayer';
+import { usePlayerTick, useTicker } from './usePlayer';
 
 export const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 export const SEEK_STEP_S = 10;
@@ -82,7 +82,16 @@ function useFullscreen(container: HTMLElement | null) {
   return { on, toggle };
 }
 
-export function PlayerPanel({ binding, compact }: { binding: PlayerBinding; compact?: boolean }) {
+export function PlayerPanel({
+  binding,
+  compact,
+  onRemoteChange,
+}: {
+  binding: PlayerBinding;
+  compact?: boolean;
+  /** Remote mode switched by the viewer (to remember it for the room). */
+  onRemoteChange?: (on: boolean) => void;
+}) {
   const { videoRef, engine, player, snapshot } = binding;
   usePlayerTick(player);
   const [drag, setDrag] = useState<number | null>(null);
@@ -91,11 +100,15 @@ export function PlayerPanel({ binding, compact }: { binding: PlayerBinding; comp
   const [idle, setIdle] = useState(false);
   const [wake, setWake] = useState(0);
 
+  const remote = !!(snapshot && snapshot.remote);
+  useTicker(remote);
   const hasMedia = !!(snapshot && snapshot.source);
   const live = !!(snapshot && snapshot.live);
   const duration = player ? player.duration : 0;
-  const current = drag !== null ? drag : player ? player.currentTime : 0;
-  const paused = player ? player.paused : true;
+  const position = engine ? engine.position() : 0;
+  const current = drag !== null ? drag : position;
+  // Remote mode: show the room's state; nothing plays here.
+  const paused = remote ? !(snapshot && snapshot.state && snapshot.state.playing) : player ? player.paused : true;
   const rate = snapshot && snapshot.state ? snapshot.state.speed : 1;
   const status = snapshot ? CONNECTION_LABEL[snapshot.connection] : '';
   const act = (fn: () => void) => () => {
@@ -111,6 +124,13 @@ export function PlayerPanel({ binding, compact }: { binding: PlayerBinding; comp
     return () => clearTimeout(timer);
   }, [fullscreen.on, paused, wake]);
   const poke = () => setWake((n) => n + 1);
+  const toggleRemote = () => {
+    if (!engine) return;
+    haptic();
+    if (fullscreen.on) fullscreen.toggle();
+    engine.setRemote(!remote);
+    if (onRemoteChange) onRemoteChange(!remote);
+  };
   const onStageTap = () => {
     if (!fullscreen.on) return;
     if (idle) poke();
@@ -121,17 +141,24 @@ export function PlayerPanel({ binding, compact }: { binding: PlayerBinding; comp
     <div class={fullscreen.on ? (idle ? 'player max idle' : 'player max') : 'player'} ref={setContainer}>
       <div class="player-stage" onClick={onStageTap}>
         <video ref={videoRef} class="video" playsInline />
-        {!hasMedia && (
+        {remote && (
+          <div class="player-remote">
+            <div class="player-remote-icon">📺</div>
+            <div>{hasMedia ? 'Playing on TV' : 'Remote mode'}</div>
+            <div class="small">This phone is the remote</div>
+          </div>
+        )}
+        {!hasMedia && !remote && (
           <div class="player-empty">
             {snapshot && snapshot.state && snapshot.state.mediaId ? 'Loading…' : 'Nothing is playing'}
           </div>
         )}
-        {snapshot && snapshot.needsGesture && engine && (
+        {snapshot && snapshot.needsGesture && engine && !remote && (
           <button class="player-unlock" onClick={() => engine.unlock()}>
             Tap to start
           </button>
         )}
-        {snapshot && snapshot.autoMuted && engine && (
+        {snapshot && snapshot.autoMuted && engine && !remote && (
           <button class="player-unmute" onClick={() => engine.unlock()}>
             🔇 Tap to unmute
           </button>
@@ -181,7 +208,7 @@ export function PlayerPanel({ binding, compact }: { binding: PlayerBinding; comp
             ⏮
           </button>
           {!live && (
-            <button disabled={!hasMedia} onClick={act(() => engine && player && engine.seek(player.currentTime - SEEK_STEP_S))} aria-label="Back 10 seconds">
+            <button disabled={!hasMedia} onClick={act(() => engine && engine.seek(engine.position() - SEEK_STEP_S))} aria-label="Back 10 seconds">
               −10
             </button>
           )}
@@ -189,7 +216,7 @@ export function PlayerPanel({ binding, compact }: { binding: PlayerBinding; comp
             {paused ? '▶' : '⏸'}
           </button>
           {!live && (
-            <button disabled={!hasMedia} onClick={act(() => engine && player && engine.seek(player.currentTime + SEEK_STEP_S))} aria-label="Forward 10 seconds">
+            <button disabled={!hasMedia} onClick={act(() => engine && engine.seek(engine.position() + SEEK_STEP_S))} aria-label="Forward 10 seconds">
               +10
             </button>
           )}
@@ -199,11 +226,18 @@ export function PlayerPanel({ binding, compact }: { binding: PlayerBinding; comp
         </div>
         {(!compact || fullscreen.on) && (
           <div class="controls-row buttons secondary">
-            <button disabled={!hasMedia} onClick={() => engine && engine.syncNow()}>
-              Sync
-            </button>
-            <button disabled={!hasMedia && !fullscreen.on} onClick={fullscreen.toggle}>
-              {fullscreen.on ? 'Exit fullscreen' : 'Fullscreen'}
+            {!remote && (
+              <button disabled={!hasMedia} onClick={() => engine && engine.syncNow()}>
+                Sync
+              </button>
+            )}
+            {!remote && (
+              <button disabled={!hasMedia && !fullscreen.on} onClick={fullscreen.toggle}>
+                {fullscreen.on ? 'Exit fullscreen' : 'Fullscreen'}
+              </button>
+            )}
+            <button disabled={!engine} onClick={toggleRemote}>
+              {remote ? 'Watch on this phone' : 'Use as remote'}
             </button>
           </div>
         )}

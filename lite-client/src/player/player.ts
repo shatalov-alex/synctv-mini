@@ -198,6 +198,11 @@ export class VideoPlayer {
     this.video.muted = muted;
   }
 
+  /** 'metadata' while only the duration is needed (remote mode), else 'auto'. */
+  setPreload(preload: 'metadata' | 'auto'): void {
+    this.video.preload = preload;
+  }
+
   /** Runs fn with every resulting element event reported as programmatic. */
   programmatic(kinds: EchoKind[], fn: () => void): void {
     for (const kind of kinds) this.echo.expect(kind);

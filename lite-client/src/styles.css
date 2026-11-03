@@ -492,3 +492,17 @@ html.player-max body {
   display: block;
   margin: 16px auto 0;
 }
+.player-remote {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: #000;
+  color: #ddd;
+}
+.player-remote-icon {
+  font-size: 40px;
+}

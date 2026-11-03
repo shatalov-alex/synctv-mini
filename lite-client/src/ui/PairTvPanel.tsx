@@ -37,7 +37,17 @@ export function CodeInput(props: { value: string; onInput: (value: string) => vo
 }
 
 /** "Watch on TV": claim the code shown on /tv; the creator also manages paired TVs. */
-export function PairTvPanel({ api, roomId, isCreator }: { api: ApiClient; roomId: string; isCreator: boolean }) {
+export function PairTvPanel({
+  api,
+  roomId,
+  isCreator,
+  onPaired,
+}: {
+  api: ApiClient;
+  roomId: string;
+  isCreator: boolean;
+  onPaired?: () => void;
+}) {
   const [code, setCode] = useState('');
   const [state, setState] = useState<'idle' | 'busy' | 'done'>('idle');
   const [error, setError] = useState('');
@@ -61,6 +71,7 @@ export function PairTvPanel({ api, roomId, isCreator }: { api: ApiClient; roomId
       await claimPairing(api, normalized, roomId);
       setState('done');
       setCode('');
+      if (onPaired) onPaired();
       void reloadTvs();
     } catch (e) {
       setState('idle');
@@ -97,7 +108,7 @@ export function PairTvPanel({ api, roomId, isCreator }: { api: ApiClient; roomId
           Pair
         </button>
       </form>
-      {state === 'done' && <p class="ok">TV paired ✓ It will start playing in a moment.</p>}
+      {state === 'done' && <p class="ok">TV paired ✓ It will start playing in a moment; this phone is now its remote.</p>}
       {isCreator && tvs.length > 0 && (
         <ul class="list">
           {tvs.map((tv) => (
