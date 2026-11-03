@@ -10,6 +10,9 @@ describe('links', () => {
   it('builds Mini App invite links', () => {
     expect(inviteLink('tok_ABC-123', cfg)).toBe('https://t.me/synctv_bot/watch?startapp=tok_ABC-123');
     expect(inviteLink('x', { botUsername: '', appShortName: 'watch' })).toBeNull();
+    expect(inviteLink('tok', { botUsername: 'synctv_bot', appShortName: '' })).toBe(
+      'https://t.me/synctv_bot?startapp=tok',
+    );
   });
   it('builds share links', () => {
     expect(telegramShareLink('https://t.me/a/b?startapp=x', 'Hi')).toBe(

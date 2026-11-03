@@ -1,5 +1,6 @@
 // Deep links into the Telegram Mini App. Bot username and app short name are
-// build-time config (VITE_TG_BOT_USERNAME / VITE_TG_APP_SHORT_NAME).
+// build-time config (VITE_TG_BOT_USERNAME / VITE_TG_APP_SHORT_NAME). Without a short
+// name the links target the bot's Main Mini App (`t.me/<bot>?startapp=...`).
 
 export interface MiniAppConfig {
   botUsername: string;
@@ -15,8 +16,9 @@ export const miniApp: MiniAppConfig = {
 export const PAIR_START_PREFIX = 'pair-';
 
 export function miniAppLink(startParam: string, config: MiniAppConfig = miniApp): string | null {
-  if (!config.botUsername || !config.appShortName) return null;
-  return `https://t.me/${config.botUsername}/${config.appShortName}?startapp=${encodeURIComponent(startParam)}`;
+  if (!config.botUsername) return null;
+  const app = config.appShortName ? `/${config.appShortName}` : '';
+  return `https://t.me/${config.botUsername}${app}?startapp=${encodeURIComponent(startParam)}`;
 }
 
 export function inviteLink(token: string, config: MiniAppConfig = miniApp): string | null {
