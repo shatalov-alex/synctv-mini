@@ -49,6 +49,7 @@ pub(crate) mod slice_cache_management;
 mod source_config;
 pub(crate) mod stun_server;
 pub(crate) mod system_stats;
+pub mod telegram_bot;
 pub(crate) mod time_partition_manager;
 pub(crate) mod user;
 pub(crate) mod user_notification;
@@ -67,8 +68,8 @@ pub use auth::{
     BruteForceProtectionService, Claims, GuestClaims, GuestTokenValidator, InMemoryAttemptTracker,
     InMemoryTokenBlacklistStore, JwtService, JwtServiceOptions, JwtValidator,
     OpaquePasswordService, PgTokenBlacklistStore, RedisAttemptTracker, SecurityPipeline,
-    SecurityPipelineRuntime, TieredTokenBlacklistStore, TokenAuthContext, TokenBlacklistStore,
-    TokenCredentialBinding, TokenType,
+    SecurityPipelineRuntime, TelegramInitData, TieredTokenBlacklistStore, TokenAuthContext,
+    TokenBlacklistStore, TokenCredentialBinding, TokenType,
 };
 pub use ban_record::{
     BanRecordListQuery, BanRecordPage, BanRecordRow, BanRecordService, BanRecordTargetType,
@@ -200,8 +201,17 @@ pub use review::{
 };
 pub(crate) use room::soft_delete_room_and_cleanup_in_tx;
 pub use room::{
+    invite_token_hash, RoomAdmissionEvent, RoomAdmissionNotifier, DEFAULT_INVITE_MAX_USES,
+    DEFAULT_INVITE_TTL_SECS, INVITED_GUEST_PERMISSIONS,
+};
+pub use room::{
     local_room_opaque_password_login_session_store,
     local_room_opaque_password_registration_session_store,
+};
+pub use room::{
+    normalize_tv_pairing_code, tv_pairing_secret_hash, TvPairingPoll, TvPairingStart,
+    TV_PAIRING_CODE_ALPHABET, TV_PAIRING_CODE_LEN, TV_PAIRING_POLL_INTERVAL_MS,
+    TV_PAIRING_TTL_SECS, TV_REVOKE_KICK_COOLDOWN_SECS,
 };
 pub use room::{
     room_opaque_password_login_session_store_from_shared_state_profile,
@@ -283,10 +293,10 @@ pub use user::{
     OpaqueRegistrationSession, OpaqueRegistrationSessionStore, OpaqueRegistrationStartChallenge,
     PendingAccountRegistration, RefreshRateLimitConfig, RegistrationMode, RegistrationPolicy,
     SensitiveVerificationChallenge, SensitiveVerificationOutcome, SensitiveVerificationSession,
-    SensitiveVerificationSessionStore, TotpRecoveryCodes, TotpSetup, UserDeletedChatMessage,
-    UserDeletedRoomImpact, UserDeletionOptions, UserDeletionSource, UserDeletionSummary,
-    UserRestoreOptions, UserRestoreResult, UserService, UserServiceDependencies,
-    UserServiceRuntimeOptions,
+    SensitiveVerificationSessionStore, TelegramAdminLogin, TotpRecoveryCodes, TotpSetup,
+    UserDeletedChatMessage, UserDeletedRoomImpact, UserDeletionOptions, UserDeletionSource,
+    UserDeletionSummary, UserRestoreOptions, UserRestoreResult, UserService,
+    UserServiceDependencies, UserServiceRuntimeOptions,
 };
 pub use user::{
     InMemoryLoginSessionStore, InMemoryMfaSessionStore, InMemoryOpaqueRegistrationSessionStore,

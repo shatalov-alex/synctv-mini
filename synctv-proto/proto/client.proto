@@ -25,6 +25,8 @@ service AuthService {
   rpc CreateGuestToken(CreateGuestTokenRequest) returns (CreateGuestTokenResponse);
   rpc RegisterWithDirectPassword(RegisterWithDirectPasswordRequest) returns (RegisterResponse);
   rpc LoginWithDirectPassword(LoginWithDirectPasswordRequest) returns (LoginResponse);
+  // Sign in from a Telegram Mini App launch (`Telegram.WebApp.initData`).
+  rpc LoginWithTelegram(LoginWithTelegramRequest) returns (LoginResponse);
   rpc RequestEmailRegistration(RequestEmailRegistrationRequest) returns (RequestEmailRegistrationResponse);
   rpc ConfirmEmailRegistration(ConfirmEmailRegistrationRequest) returns (RegisterResponse);
   rpc StartOpaqueRegistration(StartOpaqueRegistrationRequest) returns (StartOpaqueRegistrationResponse);
@@ -815,6 +817,14 @@ message RegisterWithDirectPasswordRequest {
   string password = 3 [(buf.validate.field).string = {
     min_len: 1
     max_len: 1024
+  }];
+}
+
+message LoginWithTelegramRequest {
+  // Raw `Telegram.WebApp.initData` query string, verified server-side against the bot token.
+  string init_data = 1 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 8192
   }];
 }
 
@@ -5564,3 +5574,126 @@ message DeleteNotificationResponse {}
 message DeleteAllReadRequest {}
 
 message DeleteAllReadResponse {}
+
+// Room invite links. A link is `t.me/<bot>/<app>?startapp=<token>`; redeeming it from the
+// Mini App adds the Telegram user to the room with playback control only.
+message RoomInvite {
+  int64 id = 1;
+  // Unix seconds; 0 = never expires.
+  int64 expires_at = 2;
+  // 0 = unlimited.
+  int32 max_uses = 3;
+  int32 uses = 4;
+  bool revoked = 5;
+  int64 created_at = 6;
+}
+
+message CreateRoomInviteRequest {
+  // 0 = default (24 hours). At most 30 days.
+  int64 ttl_seconds = 1 [(buf.validate.field).int64 = {
+    gte: 0
+    lte: 2592000
+  }];
+  // 0 = default (1 person).
+  int32 max_uses = 2 [(buf.validate.field).int32 = {
+    gte: 0
+    lte: 100
+  }];
+}
+
+message CreateRoomInviteResponse {
+  RoomInvite invite = 1;
+  // Shown only once; only its hash is stored.
+  string token = 2;
+}
+
+message ListRoomInvitesResponse {
+  repeated RoomInvite invites = 1;
+}
+
+message RevokeRoomInvitesRequest {
+  // 0 = revoke every live invite of the room.
+  int64 invite_id = 1 [(buf.validate.field).int64 = {gte: 0}];
+}
+
+message RevokeRoomInvitesResponse {
+  uint64 revoked = 1;
+}
+
+message RedeemRoomInviteRequest {
+  // Raw `Telegram.WebApp.initData`.
+  string init_data = 1 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 8192
+  }];
+  // Invite token; empty = use the Mini App `start_param`.
+  string token = 2 [(buf.validate.field).string = {
+    max_len: 64
+  }];
+}
+
+message RedeemRoomInviteResponse {
+  LoginResponse login = 1;
+  string room_id = 2;
+}
+
+// TV pairing. The TV starts a pairing and shows `code` (and a QR for `/pair?code=<code>`),
+// keeps `pairing_secret` to itself, and polls. A signed-in room member claims the code for a
+// room; the TV's next poll returns tokens for a new TV user that joined that room.
+message StartTvPairingRequest {}
+
+message StartTvPairingResponse {
+  // 6 chars from A-Z and 2-9 without O, 0, I, 1, L.
+  string code = 1;
+  // Only the TV ever sees this; tokens are only delivered to its holder.
+  string pairing_secret = 2;
+  // Unix seconds.
+  int64 expires_at = 3;
+  int32 poll_interval_ms = 4;
+}
+
+message PollTvPairingRequest {
+  string pairing_secret = 1 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 128
+  }];
+}
+
+message PollTvPairingResponse {
+  // "PENDING", "CLAIMED" or "EXPIRED". Tokens are delivered once: after a CLAIMED response
+  // the pairing is gone and later polls return EXPIRED.
+  string status = 1;
+  // Only when CLAIMED.
+  LoginResponse login = 2;
+  // Only when CLAIMED.
+  string room_id = 3;
+}
+
+message ClaimTvPairingRequest {
+  // Case-insensitive.
+  string code = 1 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 16
+  }];
+  string room_id = 2 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 64
+  }];
+}
+
+message ClaimTvPairingResponse {}
+
+message TvDevice {
+  string user_id = 1;
+  string name = 2;
+  // Unix seconds.
+  int64 paired_at = 3;
+  // User id of whoever claimed the code; empty if that account is gone.
+  string paired_by = 4;
+}
+
+message ListTvDevicesResponse {
+  repeated TvDevice tvs = 1;
+}
+
+message RevokeTvDeviceResponse {}

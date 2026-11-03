@@ -1420,6 +1420,54 @@ impl Default for ConnectionLimitsConfig {
     }
 }
 
+/// Telegram Mini App sign-in and bot chat. Disabled while `bot_token` is empty.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TelegramConfig {
+    pub bot_token: String,
+    /// Telegram user id that signs in as `admin_username`. 0 = nobody.
+    pub admin_user_id: i64,
+    /// Local admin/root account the Telegram admin signs in as. Empty = `bootstrap.root_username`.
+    pub admin_username: String,
+    /// Reject Mini App launch data older than this.
+    pub init_data_max_age_secs: i64,
+    /// Mini App URL for the bot's `web_app` buttons and chat menu button. Empty = no button.
+    pub web_app_url: String,
+    /// Long-poll `getUpdates` for bot commands (one node at a time: leader-gated).
+    pub bot_polling_enabled: bool,
+    /// Bot API base URL (override for a local Bot API server or tests).
+    pub api_base_url: String,
+}
+
+impl Default for TelegramConfig {
+    fn default() -> Self {
+        Self {
+            bot_token: String::new(),
+            admin_user_id: 0,
+            admin_username: String::new(),
+            init_data_max_age_secs: 3600,
+            web_app_url: String::new(),
+            bot_polling_enabled: true,
+            api_base_url: synctv_core::service::telegram_bot::DEFAULT_TELEGRAM_API_BASE_URL
+                .to_string(),
+        }
+    }
+}
+
+impl std::fmt::Debug for TelegramConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TelegramConfig")
+            .field("bot_token", &"<redacted>")
+            .field("admin_user_id", &self.admin_user_id)
+            .field("admin_username", &self.admin_username)
+            .field("init_data_max_age_secs", &self.init_data_max_age_secs)
+            .field("web_app_url", &self.web_app_url)
+            .field("bot_polling_enabled", &self.bot_polling_enabled)
+            .field("api_base_url", &self.api_base_url)
+            .finish()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct BootstrapConfig {
@@ -1787,6 +1835,7 @@ pub struct AppConfig {
     pub webrtc: WebRTCConfig,
     pub connection_limits: ConnectionLimitsConfig,
     pub bootstrap: BootstrapConfig,
+    pub telegram: TelegramConfig,
     pub cluster: ClusterChannelConfig,
     pub password_complexity: PasswordComplexityConfig,
     pub buffer_sizes: BufferSizesConfig,
@@ -1818,6 +1867,7 @@ impl std::fmt::Debug for AppConfig {
             .field("webrtc", &self.webrtc)
             .field("connection_limits", &self.connection_limits)
             .field("bootstrap", &"<redacted>")
+            .field("telegram", &self.telegram)
             .field("cluster", &self.cluster)
             .field("password_complexity", &self.password_complexity)
             .field("buffer_sizes", &self.buffer_sizes)
@@ -1851,6 +1901,7 @@ impl Default for AppConfig {
             webrtc: WebRTCConfig::default(),
             connection_limits: ConnectionLimitsConfig::default(),
             bootstrap: BootstrapConfig::default(),
+            telegram: TelegramConfig::default(),
             cluster: ClusterChannelConfig::default(),
             password_complexity: PasswordComplexityConfig::default(),
             buffer_sizes: BufferSizesConfig::default(),

@@ -653,6 +653,37 @@ bootstrap:
   # root_password: ""
   # root_password_file: "/run/secrets/bootstrap_root_password"
 
+telegram:
+  # Telegram Mini App sign-in and bot chat. Admin sign-in is disabled while bot_token is
+  # empty or admin_user_id is 0; the bot runs whenever bot_token is set.
+  # Environment variables:
+  #   SYNCTV_TELEGRAM_BOT_TOKEN / SYNCTV_TELEGRAM_BOT_TOKEN_FILE
+  #   SYNCTV_TELEGRAM_ADMIN_USER_ID
+  #   SYNCTV_TELEGRAM_ADMIN_USERNAME
+  #   SYNCTV_TELEGRAM_INIT_DATA_MAX_AGE_SECS
+  #   SYNCTV_TELEGRAM_WEB_APP_URL
+  #   SYNCTV_TELEGRAM_BOT_POLLING_ENABLED
+  #   SYNCTV_TELEGRAM_API_BASE_URL
+  bot_token: ""
+  # Numeric Telegram user id allowed to sign in as admin_username (POST /api/auth/telegram).
+  admin_user_id: 0
+  # Local admin/root account the Telegram admin signs in as. Empty = bootstrap.root_username.
+  admin_username: ""
+  # Reject Mini App launch data older than this many seconds.
+  init_data_max_age_secs: 3600
+  # Public https:// URL of the Mini App (this server's lite client). The bot's /start reply
+  # and the chat menu button open it. Empty = /start says the app isn't configured.
+  # (server.project_url is the project homepage, so it is not used as a fallback.)
+  web_app_url: ""
+  # Bot chat over getUpdates long polling: /start (anyone), /invite (admin_user_id only:
+  # pick one of your rooms to get a 24 h single-use invite link), and messages to the admin
+  # when someone joins through an invite or a TV is paired (sent from any node).
+  # Telegram allows one poller per bot: in cluster mode only the elected leader polls. Turn
+  # this off if another process (or a webhook) consumes this bot's updates.
+  bot_polling_enabled: true
+  # Bot API base URL. Change only for a self-hosted Bot API server.
+  api_base_url: "https://api.telegram.org"
+
   # ============================================================================
   # Cluster Configuration
   # ============================================================================

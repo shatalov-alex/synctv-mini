@@ -23,7 +23,9 @@ pub(crate) mod oauth2;
 pub(crate) mod public;
 pub(crate) mod room;
 pub(crate) mod room_extra;
+pub(crate) mod room_invites;
 pub(crate) mod ticket;
+pub(crate) mod tv_pairing;
 pub(crate) mod user;
 pub(crate) mod validation;
 #[cfg(any(feature = "web-ui", feature = "web-ui-dynamic"))]
@@ -349,6 +351,13 @@ fn register_extracted_auth_routes() -> Router<AppState> {
             post(auth::login_with_direct_password),
         )
         .route("/api/auth/login/start", post(auth::start_login))
+        .route("/api/auth/telegram", post(auth::login_with_telegram))
+        .route(
+            "/api/invites/redeem",
+            post(room_invites::redeem_room_invite),
+        )
+        .route("/api/tv/pairings", post(tv_pairing::start_tv_pairing))
+        .route("/api/tv/pairings/poll", post(tv_pairing::poll_tv_pairing))
         .route(
             "/api/auth/email/registration/request",
             post(auth::request_email_registration),
@@ -952,6 +961,20 @@ fn register_all_routes() -> Router<AppState> {
         .merge(
             Router::new()
                 .route("/api/rooms/{roomId}/members", post(room_extra::add_member))
+                .route(
+                    "/api/rooms/{roomId}/invites",
+                    post(room_invites::create_room_invite).get(room_invites::list_room_invites),
+                )
+                .route(
+                    "/api/rooms/{roomId}/invites/revoke",
+                    post(room_invites::revoke_room_invites),
+                )
+                .route("/api/tv/pairings/claim", post(tv_pairing::claim_tv_pairing))
+                .route("/api/rooms/{roomId}/tvs", get(tv_pairing::list_tv_devices))
+                .route(
+                    "/api/rooms/{roomId}/tvs/{userId}/revoke",
+                    post(tv_pairing::revoke_tv_device),
+                )
                 .route(
                     "/api/rooms/{roomId}/reviews/joins",
                     get(room_extra::list_room_join_reviews),

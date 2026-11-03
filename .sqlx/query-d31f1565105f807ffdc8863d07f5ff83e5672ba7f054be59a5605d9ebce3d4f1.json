@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE tv_pairings\n            SET claimed_at = NULL, room_id = NULL, tv_user_id = NULL, tv_device_id = NULL\n            WHERE id = $1\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d31f1565105f807ffdc8863d07f5ff83e5672ba7f054be59a5605d9ebce3d4f1"
+}

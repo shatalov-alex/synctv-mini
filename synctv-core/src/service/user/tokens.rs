@@ -2,7 +2,10 @@ use synctv_common::ExecutionControl;
 
 use crate::{
     models::UserId,
-    repository::{UserOAuthProviderRepository, WebAuthnCredentialRepository},
+    repository::{
+        TelegramIdentityRepository, TvDeviceRepository, UserOAuthProviderRepository,
+        WebAuthnCredentialRepository,
+    },
     service::{user::UserService, TokenCredentialBinding},
     Error, Result,
 };
@@ -201,6 +204,27 @@ impl UserService {
                     return Err(Error::Authentication("Authentication failed".to_string()));
                 }
                 Ok(TokenCredentialBinding::Email { email })
+            }
+            TokenCredentialBinding::Telegram { telegram_user_id } => {
+                let mapped = TelegramIdentityRepository::new(self.repository.pool().clone())
+                    .find_user_id(telegram_user_id)
+                    .await?;
+                if mapped.as_ref() != Some(user_id) {
+                    return Err(Error::Authentication("Authentication failed".to_string()));
+                }
+                Ok(TokenCredentialBinding::Telegram { telegram_user_id })
+            }
+            TokenCredentialBinding::TvDevice { device_id } => {
+                let device = TvDeviceRepository::new(self.repository.pool().clone())
+                    .get(device_id)
+                    .await?;
+                if device
+                    .as_ref()
+                    .is_none_or(|device| device.user_id != *user_id || device.revoked_at.is_some())
+                {
+                    return Err(Error::Authentication("Authentication failed".to_string()));
+                }
+                Ok(TokenCredentialBinding::TvDevice { device_id })
             }
         }
     }

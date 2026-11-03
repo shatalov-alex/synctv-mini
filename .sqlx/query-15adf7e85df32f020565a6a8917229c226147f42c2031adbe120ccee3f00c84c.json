@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT user_id AS \"user_id: UserId\"\n            FROM auth_telegram_identities\n            WHERE telegram_user_id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "user_id: UserId",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "auth_telegram_identities",
+            "name": "user_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "15adf7e85df32f020565a6a8917229c226147f42c2031adbe120ccee3f00c84c"
+}

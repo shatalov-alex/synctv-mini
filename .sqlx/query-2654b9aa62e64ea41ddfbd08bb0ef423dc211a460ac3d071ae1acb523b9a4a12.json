@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE tv_pairings\n            SET claimed_at = CURRENT_TIMESTAMP\n            WHERE code = $1\n              AND claimed_at IS NULL\n              AND expires_at > CURRENT_TIMESTAMP\n            RETURNING id\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "tv_pairings",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "2654b9aa62e64ea41ddfbd08bb0ef423dc211a460ac3d071ae1acb523b9a4a12"
+}

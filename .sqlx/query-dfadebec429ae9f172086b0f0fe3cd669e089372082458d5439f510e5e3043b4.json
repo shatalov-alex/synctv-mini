@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO auth_telegram_identities (telegram_user_id, user_id, first_name, username)\n            VALUES ($1, $2, $3, $4)\n            ON CONFLICT (telegram_user_id) DO UPDATE\n               SET user_id = EXCLUDED.user_id,\n                   first_name = EXCLUDED.first_name,\n                   username = EXCLUDED.username\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8",
+        "Varchar",
+        "Varchar"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "dfadebec429ae9f172086b0f0fe3cd669e089372082458d5439f510e5e3043b4"
+}

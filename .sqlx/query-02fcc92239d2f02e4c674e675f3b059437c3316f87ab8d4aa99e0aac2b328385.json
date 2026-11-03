@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE room_invites\n            SET uses = uses + 1\n            WHERE id = $1\n              AND revoked_at IS NULL\n              AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)\n              AND (max_uses IS NULL OR uses < max_uses)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "02fcc92239d2f02e4c674e675f3b059437c3316f87ab8d4aa99e0aac2b328385"
+}

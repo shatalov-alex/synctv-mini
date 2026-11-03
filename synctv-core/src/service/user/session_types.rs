@@ -110,6 +110,10 @@ pub enum AuthFactorMethod {
     Totp,
     RecoveryCode,
     Email,
+    /// Telegram Mini App sign-in. Only ever a first factor, never offered for MFA.
+    Telegram,
+    /// TV pairing (code claimed by a signed-in user). Only ever a first factor.
+    TvPairing,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

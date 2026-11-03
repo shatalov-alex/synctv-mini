@@ -51,7 +51,8 @@ use crate::realtime_bridge::room_event_to_realtime_event;
 use crate::realtime_outbox_dispatcher::start_realtime_outbox_dispatcher;
 use crate::resource_options::{
     connection_limits_options, core_services_options, database_init_options,
-    leader_runtime_options, redis_connection_options, root_user_bootstrap_options, time_options,
+    leader_runtime_options, redis_connection_options, root_user_bootstrap_options,
+    telegram_bot_config, time_options,
 };
 use crate::server::{LivestreamState, ServerListenerOverrides, Services, SyncTvServer};
 use crate::shutdown::{
@@ -901,6 +902,10 @@ impl Application {
         // Phase 5: Singleton background tasks
         Self::start_email_outbox_dispatcher(&infra, &core, &leader, &mut shutdown);
         Self::start_singleton_tasks(&infra, &runtime_plan, &core, &leader, &mut shutdown);
+        if let Err(e) = Self::start_telegram_bot(&infra, &core, &leader, &mut shutdown) {
+            shutdown.shutdown().await;
+            return Err(e);
+        }
 
         // Phase 6: Cluster infrastructure
         let cluster =
@@ -1167,6 +1172,7 @@ impl Application {
                 totp_encryption_key,
                 realtime_outbox: runtime_plan.core_realtime_outbox(),
                 read_pool: Some(infra.database_pools.read_pool()),
+                room_admission_notifier: Self::telegram_admin_notifier(&infra.config)?,
             },
         )
         .await?;
@@ -1507,6 +1513,72 @@ impl Application {
                 ),
             );
         }
+    }
+
+    /// Messages the Telegram admin about invite joins and TV pairings. Every node sends its
+    /// own (sendMessage needs no coordination); `None` without a bot token or admin id.
+    fn telegram_admin_notifier(
+        config: &crate::app_config::AppConfig,
+    ) -> Result<Option<Arc<dyn synctv_core::service::RoomAdmissionNotifier>>> {
+        let Some(bot) = telegram_bot_config(config) else {
+            return Ok(None);
+        };
+        if bot.admin_user_id == 0 {
+            return Ok(None);
+        }
+        let api = synctv_core::service::telegram_bot::TelegramBotApi::new(
+            &bot.api_base_url,
+            &bot.bot_token,
+        )?;
+        Ok(Some(Arc::new(
+            synctv_core::service::telegram_bot::TelegramAdminNotifier::new(api, bot.admin_user_id),
+        )))
+    }
+
+    /// Long-poll Telegram for bot commands. Telegram allows one `getUpdates` consumer per bot,
+    /// so polling is leader-gated: standalone always polls, a cluster polls on the leader only
+    /// and hands over on leadership change.
+    fn start_telegram_bot(
+        infra: &Infrastructure,
+        core: &CoreState,
+        leader: &LeaderState,
+        shutdown: &mut ShutdownCoordinator,
+    ) -> Result<()> {
+        let Some(bot) = telegram_bot_config(&infra.config) else {
+            return Ok(());
+        };
+        if !infra.config.telegram.bot_polling_enabled {
+            info!("Telegram bot polling disabled (telegram.bot_polling_enabled=false)");
+            return Ok(());
+        }
+        let api = synctv_core::service::telegram_bot::TelegramBotApi::new(
+            &bot.api_base_url,
+            &bot.bot_token,
+        )?;
+        let room_service = core.services.room_service.clone();
+        let user_service = core.services.user_service.clone();
+        let cancel = shutdown.register_token("telegram_bot_polling");
+        let poll_cancel = cancel.clone();
+        let task_factory: AsyncOnceTaskFactory = Arc::new(move || {
+            Box::pin(synctv_core::service::telegram_bot::run_polling(
+                api.clone(),
+                bot.clone(),
+                room_service.clone(),
+                user_service.clone(),
+                poll_cancel.child_token(),
+            ))
+        });
+        shutdown.register_task(
+            "telegram_bot_polling",
+            spawn_on_leadership_gain(
+                "telegram_bot_polling",
+                leader.leader_runtime.clone(),
+                cancel,
+                task_factory,
+            ),
+        );
+        info!("Telegram bot polling scheduled (leader-gated)");
+        Ok(())
     }
 
     fn start_email_outbox_dispatcher(
@@ -2110,6 +2182,7 @@ mod tests {
                 root_username: String::new(),
                 root_password: String::new(),
             },
+            telegram: crate::app_config::TelegramConfig::default(),
             cluster: ClusterChannelConfig::default(),
             password_complexity: PasswordComplexityConfig::default(),
             buffer_sizes: BufferSizesConfig::default(),

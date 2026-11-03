@@ -1,6 +1,28 @@
 use super::*;
 use synctv_api::validate_cors_origin;
 
+/// Telegram only opens Mini Apps over HTTPS; the Bot API base may be plain HTTP (local
+/// Bot API server, tests).
+fn validate_telegram_urls(web_app_url: &str, api_base_url: &str) -> Result<(), String> {
+    let web_app_url = web_app_url.trim();
+    if !web_app_url.is_empty() {
+        let parsed = url::Url::parse(web_app_url)
+            .map_err(|error| format!("telegram.web_app_url is not a valid URL: {error}"))?;
+        if parsed.scheme() != "https" || parsed.host_str().is_none() {
+            return Err("telegram.web_app_url must be an https:// URL with a host".to_string());
+        }
+    }
+    let api_base_url = api_base_url.trim();
+    if !api_base_url.is_empty() {
+        let parsed = url::Url::parse(api_base_url)
+            .map_err(|error| format!("telegram.api_base_url is not a valid URL: {error}"))?;
+        if !matches!(parsed.scheme(), "http" | "https") || parsed.host_str().is_none() {
+            return Err("telegram.api_base_url must be an http(s):// URL with a host".to_string());
+        }
+    }
+    Ok(())
+}
+
 fn validate_project_url(project_url: &str) -> Result<(), String> {
     let parsed = url::Url::parse(project_url)
         .map_err(|error| format!("server.project_url is not a valid URL: {error}"))?;
@@ -508,6 +530,11 @@ impl AppConfig {
             errors.push("server.shutdown_drain_timeout_seconds must be greater than 0".to_string());
         }
         if let Err(error) = validate_project_url(&self.server.project_url) {
+            errors.push(error);
+        }
+        if let Err(error) =
+            validate_telegram_urls(&self.telegram.web_app_url, &self.telegram.api_base_url)
+        {
             errors.push(error);
         }
         if self
@@ -1455,7 +1482,7 @@ impl AppConfig {
 mod tests {
     use super::{
         valid_android_package_name, valid_apple_application_identifier,
-        valid_sha256_certificate_fingerprint, validate_project_url,
+        valid_sha256_certificate_fingerprint, validate_project_url, validate_telegram_urls,
     };
     use crate::app_config::{
         AppConfig, ClusterChannelConfig, ClusterDiscoveryMode, LogFileOutput, LogOutput,
@@ -1485,6 +1512,18 @@ mod tests {
         assert!(errors
             .iter()
             .any(|error| error.contains("JWT secret is too short")));
+    }
+
+    #[test]
+    fn telegram_urls_require_https_mini_app_and_http_api_base() {
+        assert!(validate_telegram_urls("", "").is_ok());
+        assert!(
+            validate_telegram_urls("https://tv.example.com/", "https://api.telegram.org").is_ok()
+        );
+        assert!(validate_telegram_urls("", "http://127.0.0.1:8081").is_ok());
+        assert!(validate_telegram_urls("http://tv.example.com", "").is_err());
+        assert!(validate_telegram_urls("tv.example.com", "").is_err());
+        assert!(validate_telegram_urls("", "ftp://api.example.com").is_err());
     }
 
     #[test]

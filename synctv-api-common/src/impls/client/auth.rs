@@ -31,6 +31,9 @@ fn mfa_method_to_proto(method: AuthFactorMethod) -> synctv_proto::client::MfaMet
         AuthFactorMethod::Totp => synctv_proto::client::MfaMethod::Totp,
         AuthFactorMethod::RecoveryCode => synctv_proto::client::MfaMethod::RecoveryCode,
         AuthFactorMethod::Email => synctv_proto::client::MfaMethod::Email,
+        AuthFactorMethod::Telegram | AuthFactorMethod::TvPairing => {
+            synctv_proto::client::MfaMethod::Unspecified
+        }
     }
 }
 
@@ -39,7 +42,10 @@ fn login_method_to_proto(method: AuthFactorMethod) -> Option<synctv_proto::clien
         AuthFactorMethod::Password => Some(synctv_proto::client::LoginMethod::Password),
         AuthFactorMethod::WebAuthn => Some(synctv_proto::client::LoginMethod::Passkey),
         AuthFactorMethod::Email => Some(synctv_proto::client::LoginMethod::EmailCode),
-        AuthFactorMethod::Totp | AuthFactorMethod::RecoveryCode => None,
+        AuthFactorMethod::Totp
+        | AuthFactorMethod::RecoveryCode
+        | AuthFactorMethod::Telegram
+        | AuthFactorMethod::TvPairing => None,
     }
 }
 
@@ -428,6 +434,39 @@ impl ClientApiImpl {
             .login_with_direct_password_transport_with_control(
                 &req.login_session_id,
                 req.password,
+                client_ip,
+                control,
+            )
+            .await
+            .map_err(ApiError::from)?;
+
+        login_outcome_to_proto(outcome, &self.public_id_codec)
+    }
+
+    pub async fn login_with_telegram_with_control(
+        &self,
+        req: synctv_proto::client::LoginWithTelegramRequest,
+        client_ip: Option<std::net::IpAddr>,
+        control: Option<&ExecutionControl>,
+    ) -> Result<synctv_proto::client::LoginResponse, ApiError> {
+        crate::impls::validate_proto_request(&req)?;
+        let telegram = &self.runtime_settings.telegram;
+        if telegram.bot_token.is_empty() || telegram.admin_user_id == 0 {
+            return Err(ApiError::NotFound(
+                "Telegram login is not enabled".to_string(),
+            ));
+        }
+
+        let outcome = self
+            .user_service
+            .login_with_telegram_admin_with_control(
+                &req.init_data,
+                &synctv_core::service::TelegramAdminLogin {
+                    bot_token: &telegram.bot_token,
+                    admin_telegram_user_id: telegram.admin_user_id,
+                    admin_username: &telegram.admin_username,
+                    init_data_max_age_secs: telegram.init_data_max_age_secs,
+                },
                 client_ip,
                 control,
             )

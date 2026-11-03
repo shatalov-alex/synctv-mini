@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            DELETE FROM tv_pairings\n            WHERE id = $1\n              AND tv_user_id IS NOT NULL\n              AND expires_at > CURRENT_TIMESTAMP\n            RETURNING room_id AS \"room_id!: RoomId\",\n                      tv_user_id AS \"tv_user_id!: UserId\",\n                      tv_device_id AS \"tv_device_id!\"\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "room_id!: RoomId",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "tv_pairings",
+            "name": "room_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "tv_user_id!: UserId",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "tv_pairings",
+            "name": "tv_user_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "tv_device_id!",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "tv_pairings",
+            "name": "tv_device_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "70148807e4e604ff460580a8d5e5c1c87c8776b3e56d9ae3229482f75b4040a6"
+}

@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE room_invites SET uses = uses - 1 WHERE id = $1 AND uses > 0",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "945fcb3c64e4056369b2ee969b46d45a6912d7e9a1b5e072c9f222e950b7c7be"
+}

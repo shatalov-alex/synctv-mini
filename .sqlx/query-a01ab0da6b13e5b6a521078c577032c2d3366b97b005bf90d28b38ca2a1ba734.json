@@ -1,0 +1,90 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO tv_devices (user_id, room_id, paired_by)\n            VALUES ($1, $2, $3)\n            RETURNING id, user_id AS \"user_id: UserId\", room_id AS \"room_id: RoomId\",\n                      paired_by AS \"paired_by: UserId\", created_at, revoked_at\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "tv_devices",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id: UserId",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "tv_devices",
+            "name": "user_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "room_id: RoomId",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "tv_devices",
+            "name": "room_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "paired_by: UserId",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "tv_devices",
+            "name": "paired_by"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "tv_devices",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "revoked_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "tv_devices",
+            "name": "revoked_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "a01ab0da6b13e5b6a521078c577032c2d3366b97b005bf90d28b38ca2a1ba734"
+}

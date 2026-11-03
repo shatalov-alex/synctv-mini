@@ -7,14 +7,14 @@ use synctv_proto::client::{
     CreateGuestTokenRequest, CreateGuestTokenResponse, FinishMfaPasskeyRequest,
     FinishOpaqueLoginRequest, FinishOpaqueRegistrationRequest, FinishPasskeyLoginRequest,
     FinishPasskeyRegistrationRequest, LoginResponse, LoginWithDirectPasswordRequest,
-    RefreshTokenRequest, RefreshTokenResponse, RegisterResponse, RegisterWithDirectPasswordRequest,
-    RequestEmailLoginRequest, RequestEmailLoginResponse, RequestEmailRegistrationRequest,
-    RequestEmailRegistrationResponse, RequestMfaEmailCodeRequest, RequestMfaEmailCodeResponse,
-    StartLoginRequest, StartLoginResponse, StartMfaPasskeyRequest, StartMfaPasskeyResponse,
-    StartOpaqueLoginRequest, StartOpaqueLoginResponse, StartOpaqueRegistrationRequest,
-    StartOpaqueRegistrationResponse, StartPasskeyLoginRequest, StartPasskeyLoginResponse,
-    StartPasskeyRegistrationRequest, StartPasskeyRegistrationResponse, VerifyMfaEmailCodeRequest,
-    VerifyMfaRecoveryCodeRequest, VerifyMfaTotpRequest,
+    LoginWithTelegramRequest, RefreshTokenRequest, RefreshTokenResponse, RegisterResponse,
+    RegisterWithDirectPasswordRequest, RequestEmailLoginRequest, RequestEmailLoginResponse,
+    RequestEmailRegistrationRequest, RequestEmailRegistrationResponse, RequestMfaEmailCodeRequest,
+    RequestMfaEmailCodeResponse, StartLoginRequest, StartLoginResponse, StartMfaPasskeyRequest,
+    StartMfaPasskeyResponse, StartOpaqueLoginRequest, StartOpaqueLoginResponse,
+    StartOpaqueRegistrationRequest, StartOpaqueRegistrationResponse, StartPasskeyLoginRequest,
+    StartPasskeyLoginResponse, StartPasskeyRegistrationRequest, StartPasskeyRegistrationResponse,
+    VerifyMfaEmailCodeRequest, VerifyMfaRecoveryCodeRequest, VerifyMfaTotpRequest,
 };
 
 #[tonic::async_trait]
@@ -71,6 +71,30 @@ impl AuthService for ClientServiceImpl {
                             client_ip,
                             Some(&request_control),
                         )
+                        .await
+                },
+            )
+            .await
+            .map_err(map_api_error)?;
+        Ok(Response::new(response))
+    }
+
+    async fn login_with_telegram(
+        &self,
+        request: Request<LoginWithTelegramRequest>,
+    ) -> Result<Response<LoginResponse>, Status> {
+        let metadata = self.request_metadata(&request)?;
+        let client_ip = metadata.client_ip;
+        let req = request.into_inner();
+        let executor = self.client_api.clone();
+        let client_api = self.client_api.clone();
+        let response = executor
+            .execute_public_endpoint_with_control(
+                &metadata,
+                EndpointRateLimitCategory::Auth,
+                move |request_control| async move {
+                    client_api
+                        .login_with_telegram_with_control(req, client_ip, Some(&request_control))
                         .await
                 },
             )

@@ -114,7 +114,19 @@ mod entries_outbox;
 pub use entries_outbox::RealtimeOutboxDeleteEntriesEventFactory;
 mod entries_request;
 use entries_request::{normalize_delete_entries_request, pending_delete_entries_plan};
+mod admission_notice;
 mod guest_access;
+pub use admission_notice::{RoomAdmissionEvent, RoomAdmissionNotifier};
+mod invites;
+pub use invites::{
+    invite_token_hash, DEFAULT_INVITE_MAX_USES, DEFAULT_INVITE_TTL_SECS, INVITED_GUEST_PERMISSIONS,
+};
+mod tv_pairing;
+pub use tv_pairing::{
+    normalize_tv_pairing_code, tv_pairing_secret_hash, TvPairingPoll, TvPairingStart,
+    TV_PAIRING_CODE_ALPHABET, TV_PAIRING_CODE_LEN, TV_PAIRING_POLL_INTERVAL_MS,
+    TV_PAIRING_TTL_SECS, TV_REVOKE_KICK_COOLDOWN_SECS,
+};
 mod join;
 mod lifecycle;
 mod media_playback_chat;
@@ -124,7 +136,7 @@ pub use member_display::{
     UpdateMemberDisplayTagWithOutboxRequest, UpdateMemberRemarkNameWithOutboxRequest,
 };
 mod member_kick;
-pub use member_kick::KickMemberOutboxOptions;
+pub use member_kick::{KickMemberOutboxOptions, MAX_KICK_COOLDOWN_SECONDS};
 mod member_leave;
 mod member_mutations;
 pub use member_mutations::{AddMemberWithOutboxRequest, AdminAddMemberWithOutboxRequest};
@@ -247,6 +259,9 @@ pub struct RoomService {
 
     realtime_outbox: Option<Arc<RealtimeOutboxRepository>>,
     room_file_storage_service: Option<Arc<dyn crate::service::FileStorageService>>,
+
+    /// Optional best-effort observer of invite joins and TV pairings (e.g. the Telegram bot).
+    admission_notifier: Option<Arc<dyn RoomAdmissionNotifier>>,
 }
 
 impl std::fmt::Debug for RoomService {

@@ -40,6 +40,14 @@ pub enum TokenCredentialBinding {
     Email {
         email: String,
     },
+    /// Telegram Mini App sign-in; valid while `auth_telegram_identities` maps this id to the user.
+    Telegram {
+        telegram_user_id: i64,
+    },
+    /// Paired TV; valid while the `tv_devices` row belongs to the user and is not revoked.
+    TvDevice {
+        device_id: i64,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -189,6 +197,14 @@ pub(super) enum TokenCredentialBindingClaims {
         #[serde(rename = "eml")]
         email: String,
     },
+    Telegram {
+        #[serde(rename = "tgu")]
+        telegram_user_id: i64,
+    },
+    TvDevice {
+        #[serde(rename = "tvd")]
+        device_id: i64,
+    },
 }
 
 impl From<&TokenCredentialBinding> for TokenCredentialBindingClaims {
@@ -207,6 +223,12 @@ impl From<&TokenCredentialBinding> for TokenCredentialBindingClaims {
             },
             TokenCredentialBinding::Email { email } => Self::Email {
                 email: email.clone(),
+            },
+            TokenCredentialBinding::Telegram { telegram_user_id } => Self::Telegram {
+                telegram_user_id: *telegram_user_id,
+            },
+            TokenCredentialBinding::TvDevice { device_id } => Self::TvDevice {
+                device_id: *device_id,
             },
         }
     }
@@ -309,6 +331,16 @@ impl Claims {
             TokenCredentialBindingClaims::Email { email } => TokenCredentialBinding::Email {
                 email: email.clone(),
             },
+            TokenCredentialBindingClaims::Telegram { telegram_user_id } => {
+                TokenCredentialBinding::Telegram {
+                    telegram_user_id: *telegram_user_id,
+                }
+            }
+            TokenCredentialBindingClaims::TvDevice { device_id } => {
+                TokenCredentialBinding::TvDevice {
+                    device_id: *device_id,
+                }
+            }
         }
     }
 
