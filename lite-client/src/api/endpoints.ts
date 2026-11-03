@@ -53,6 +53,11 @@ export function createRoom(api: ApiClient, name: string): Promise<Room> {
   return api.request('POST', '/api/rooms', { name });
 }
 
+/** Creator only; members are disconnected and the room disappears from every list. */
+export function deleteRoom(api: ApiClient, roomId: string): Promise<unknown> {
+  return api.request('DELETE', `/api/rooms/${enc(roomId)}`);
+}
+
 export function getRoom(api: ApiClient, roomId: string): Promise<GetRoomResponse> {
   return api.request('GET', `/api/rooms/${enc(roomId)}`);
 }

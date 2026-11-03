@@ -488,3 +488,7 @@ html.player-max body {
 .player.max.idle {
   cursor: none;
 }
+.delete-room {
+  display: block;
+  margin: 16px auto 0;
+}

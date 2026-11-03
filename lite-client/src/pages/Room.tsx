@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'preact/hooks';
 import { api } from '../auth';
-import { getRoom } from '../api/endpoints';
+import { deleteRoom, getRoom } from '../api/endpoints';
 import type { Room as RoomInfo, User } from '../api/types';
 import { errorMessage } from '../format';
 import { navigate } from '../router';
-import { telegram, useBackButtonEffect } from '../telegram';
+import { confirmAction, telegram, useBackButtonEffect } from '../telegram';
 import { InvitePanel } from '../ui/InvitePanel';
 import { PairTvPanel } from '../ui/PairTvPanel';
 import { PlayerPanel } from '../ui/PlayerPanel';
@@ -27,6 +27,17 @@ export function Room({ roomId, me }: { roomId: string; me: User | null }) {
   useEffect(() => useBackButtonEffect(() => navigate('/')), []);
 
   const isCreator = !!(me && me.id && room && room.createdBy === me.id);
+
+  const remove = async () => {
+    const ok = await confirmAction(`Delete “${(room && room.name) || 'this room'}”? Everyone in it is disconnected.`);
+    if (!ok) return;
+    try {
+      await deleteRoom(api, roomId);
+      navigate('/', true);
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  };
 
   return (
     <main class="page room">
@@ -56,6 +67,11 @@ export function Room({ roomId, me }: { roomId: string; me: User | null }) {
       />
       {isCreator && <InvitePanel api={api} roomId={roomId} />}
       <PairTvPanel api={api} roomId={roomId} isCreator={isCreator} />
+      {isCreator && (
+        <button class="ghost danger delete-room" onClick={remove}>
+          Delete room
+        </button>
+      )}
     </main>
   );
 }
