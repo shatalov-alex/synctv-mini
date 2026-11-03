@@ -9,6 +9,7 @@ import {
   type TvDevice,
 } from '../api/tv';
 import { errorMessage } from '../format';
+import { confirmAction } from '../telegram';
 
 function pairedAgo(pairedAtSec: number, nowMs: number): string {
   if (!pairedAtSec) return '';
@@ -68,7 +69,7 @@ export function PairTvPanel({ api, roomId, isCreator }: { api: ApiClient; roomId
   };
 
   const unpair = async (tv: TvDevice) => {
-    if (!confirm(`Unpair “${tv.name}”? It will go back to the pairing screen.`)) return;
+    if (!(await confirmAction(`Unpair “${tv.name}”? It will go back to the pairing screen.`))) return;
     try {
       await revokeTvDevice(api, roomId, tv.userId);
       await reloadTvs();

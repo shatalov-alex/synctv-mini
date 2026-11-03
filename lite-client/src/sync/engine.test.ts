@@ -319,3 +319,66 @@ describe('RoomSyncEngine', () => {
     expect(api.requests.filter((r) => r.path === '/api/tickets').length).toBeGreaterThanOrEqual(3);
   });
 });
+
+describe('RoomSyncEngine on phones (backgrounding)', () => {
+  let doc: EventTarget & { visibilityState: string };
+  beforeEach(() => {
+    doc = Object.assign(new EventTarget(), { visibilityState: 'visible' });
+    vi.stubGlobal('document', doc);
+    vi.stubGlobal('window', new EventTarget());
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+  const setVisibility = (value: string) => {
+    doc.visibilityState = value;
+    doc.dispatchEvent(new Event('visibilitychange'));
+  };
+
+  it('reconnects right away on return instead of waiting out the backoff', async () => {
+    const { ws } = await setup();
+    setVisibility('hidden');
+    ws.close(); // the OS killed the socket in the background
+    expect(FakeWS.all).toHaveLength(1); // backoff timer pending
+    setVisibility('visible');
+    await flush();
+    expect(FakeWS.all).toHaveLength(2);
+  });
+
+  it('replaces a socket that still claims OPEN after a long background', async () => {
+    const { ws } = await setup();
+    setVisibility('hidden');
+    vi.setSystemTime(T0 + 60_000);
+    setVisibility('visible');
+    await flush();
+    expect(FakeWS.all).toHaveLength(2);
+    expect(ws.readyState).toBe(3);
+    // A short hide keeps the live socket.
+    FakeWS.all[1].open();
+    setVisibility('hidden');
+    vi.setSystemTime(T0 + 65_000);
+    setVisibility('visible');
+    await flush();
+    expect(FakeWS.all).toHaveLength(2);
+  });
+
+  it('overlapping connects open only one socket', async () => {
+    const { ws } = await setup();
+    ws.close();
+    window.dispatchEvent(new Event('online'));
+    window.dispatchEvent(new Event('online'));
+    await flush();
+    expect(FakeWS.all.filter((w) => w.readyState !== 3)).toHaveLength(1);
+  });
+
+  it('stops listening once disposed', async () => {
+    const { ws, engine } = await setup();
+    engine.dispose();
+    ws.close();
+    setVisibility('hidden');
+    vi.setSystemTime(T0 + 60_000);
+    setVisibility('visible');
+    await flush();
+    expect(FakeWS.all).toHaveLength(1);
+  });
+});

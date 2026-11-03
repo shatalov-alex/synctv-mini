@@ -29,6 +29,12 @@ export interface TgWebApp {
   setBackgroundColor?(color: string): void;
   isVersionAtLeast?(version: string): boolean;
   onEvent(event: string, cb: () => void): void;
+  offEvent?(event: string, cb: () => void): void;
+  showConfirm?(message: string, cb: (ok: boolean) => void): void;
+  /** Bot API 8.0+ */
+  isFullscreen?: boolean;
+  requestFullscreen?(): void;
+  exitFullscreen?(): void;
   disableVerticalSwipes?(): void;
   HapticFeedback?: { impactOccurred(style: string): void };
 }
@@ -128,4 +134,48 @@ export function haptic(): void {
   } catch {
     // ignore
   }
+}
+
+/**
+ * window.confirm is unreliable in Telegram's mobile webviews (Android may
+ * auto-dismiss it), so use Telegram's native popup when available.
+ */
+export function confirmAction(message: string): Promise<boolean> {
+  const app = webApp;
+  if (app && app.showConfirm && supports(app, '6.2')) {
+    return new Promise((resolve) => {
+      try {
+        app.showConfirm!(message, (ok) => resolve(!!ok));
+      } catch {
+        resolve(window.confirm(message));
+      }
+    });
+  }
+  return Promise.resolve(window.confirm(message));
+}
+
+/** Telegram's own fullscreen (Bot API 8.0): the whole Mini App covers the screen. */
+export function tgFullscreenSupported(): boolean {
+  const app = webApp;
+  return !!app && !!app.requestFullscreen && supports(app, '8.0');
+}
+
+export function setTgFullscreen(on: boolean): void {
+  const app = webApp;
+  if (!app || !tgFullscreenSupported()) return;
+  try {
+    if (on && !app.isFullscreen) app.requestFullscreen!();
+    else if (!on && app.isFullscreen) app.exitFullscreen!();
+  } catch {
+    // unsupported on this client; the CSS layout still applies
+  }
+}
+
+/** Calls cb(isFullscreen) when Telegram enters/leaves fullscreen; returns cleanup. */
+export function onTgFullscreenChange(cb: (on: boolean) => void): () => void {
+  const app = webApp;
+  if (!app || !app.offEvent || !tgFullscreenSupported()) return () => {};
+  const handler = () => cb(!!app.isFullscreen);
+  app.onEvent('fullscreenChanged', handler);
+  return () => app.offEvent!('fullscreenChanged', handler);
 }

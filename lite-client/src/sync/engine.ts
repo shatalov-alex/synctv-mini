@@ -39,6 +39,12 @@ import {
 import type { SyncEngine, SyncSnapshot } from './types';
 
 const INIT_TIMEOUT_MS = 20_000;
+/**
+ * Hidden longer than this (Telegram minimised, phone locked): the socket may
+ * be a zombie that still reports OPEN, so reconnect on return. A reconnect is
+ * cheap: observing re-sends the full state.
+ */
+export const BACKGROUND_RECONNECT_MS = 15_000;
 const MAX_ERROR_RELOADS = 3;
 /** "Completed" tolerance for play-from-end (custom_video_player.dart:1769). */
 const ENDED_TOLERANCE_S = 0.5;
@@ -113,6 +119,10 @@ export class RoomSyncEngine implements SyncEngine {
   private readonly origin: string;
   private readonly freeMode: boolean;
   private readonly unsubscribePlayer: () => void;
+  private hiddenAt = 0;
+  /** Bumped per openSocket so an older, slower ticket request can't open a second socket. */
+  private connectGen = 0;
+  private lifecycleBound = false;
 
   constructor(
     private readonly api: ApiClient,
@@ -141,6 +151,7 @@ export class RoomSyncEngine implements SyncEngine {
     this.roomId = roomId;
     this.clock.start();
     if (this.loopTimer === null) this.loopTimer = setInterval(() => this.retryLoop(), SYNC_LOOP_MS);
+    this.bindLifecycle(true);
     void this.openSocket();
   }
 
@@ -190,11 +201,18 @@ export class RoomSyncEngine implements SyncEngine {
   unlock(): void {
     this.restoreAudio();
     this.update({ needsGesture: false });
+    // Not loaded yet (iOS may hold back loading until a gesture): start the
+    // element inside this tap; the forced sync after metadata fixes position.
+    if (!this.loadedReady && this.cur && this.cur.playing && this.player.currentSource) {
+      void this.player.play();
+      return;
+    }
     if (this.cur) void this.performSync(this.cur, true);
   }
 
   dispose(): void {
     this.disposed = true;
+    this.bindLifecycle(false);
     this.clock.stop();
     if (this.loopTimer !== null) clearInterval(this.loopTimer);
     this.loopTimer = null;
@@ -453,10 +471,48 @@ export class RoomSyncEngine implements SyncEngine {
     }
   }
 
+  // ---------------- app lifecycle (phones) ----------------
+
+  private readonly onVisibility = (): void => {
+    if (typeof document === 'undefined') return;
+    if (document.visibilityState === 'hidden') {
+      this.hiddenAt = Date.now();
+      return;
+    }
+    const away = this.hiddenAt ? Date.now() - this.hiddenAt : 0;
+    this.hiddenAt = 0;
+    this.resume(away >= BACKGROUND_RECONNECT_MS);
+  };
+
+  private readonly onOnline = (): void => this.resume(false);
+
+  /** Back in the foreground / online: reconnect now instead of waiting out the backoff. */
+  private resume(forceReconnect: boolean): void {
+    if (this.disposed || this.lost) return;
+    void this.clock.sample();
+    const open = !!this.ws && this.ws.readyState === 1;
+    if (open && !forceReconnect) {
+      if (this.cur) void this.performSync(this.cur);
+      return;
+    }
+    this.attempts = 0;
+    void this.openSocket();
+  }
+
+  private bindLifecycle(on: boolean): void {
+    if (on === this.lifecycleBound || typeof document === 'undefined' || typeof window === 'undefined') return;
+    this.lifecycleBound = on;
+    const method = on ? 'addEventListener' : 'removeEventListener';
+    document[method]('visibilitychange', this.onVisibility);
+    window[method]('online', this.onOnline);
+    window[method]('pageshow', this.onVisibility);
+  }
+
   // ---------------- connection (spec §1) ----------------
 
   private async openSocket(): Promise<void> {
     if (this.disposed || this.lost) return;
+    const gen = ++this.connectGen;
     this.clearReconnect();
     this.closeSocket();
     this.update({ connection: this.attempts > 0 ? 'reconnecting' : 'connecting' });
@@ -470,6 +526,7 @@ export class RoomSyncEngine implements SyncEngine {
       if (!res.ticket) throw new Error('no ticket');
       ticket = res.ticket;
     } catch (error) {
+      if (gen !== this.connectGen) return;
       // 403: not a member any more (e.g. TV unpaired); 404: room gone. 401 here
       // means the refresh already failed and the client signed out.
       if (error instanceof ApiError && (error.status === 401 || error.status === 403 || error.status === 404)) {
@@ -479,7 +536,7 @@ export class RoomSyncEngine implements SyncEngine {
       this.scheduleReconnect();
       return;
     }
-    if (this.disposed) return;
+    if (this.disposed || gen !== this.connectGen) return;
     let ws: WebSocket;
     try {
       ws = new WebSocket(wsUrl(this.origin, this.roomId, ticket));

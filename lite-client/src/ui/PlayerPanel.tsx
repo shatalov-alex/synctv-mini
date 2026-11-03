@@ -1,11 +1,12 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { formatTime } from '../format';
-import { haptic } from '../telegram';
+import { haptic, onTgFullscreenChange, setTgFullscreen, tgFullscreenSupported } from '../telegram';
 import type { PlayerBinding } from './usePlayer';
 import { usePlayerTick } from './usePlayer';
 
 export const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 export const SEEK_STEP_S = 10;
+const CONTROLS_IDLE_MS = 3500;
 
 const CONNECTION_LABEL: Record<string, string> = {
   idle: '',
@@ -15,18 +16,69 @@ const CONNECTION_LABEL: Record<string, string> = {
   closed: 'Disconnected',
 };
 
-function requestFullscreen(container: HTMLElement | null, video: HTMLVideoElement | null): void {
-  const el = container as (HTMLElement & { webkitRequestFullscreen?: () => void }) | null;
-  const v = video as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null;
-  const doc = document as Document & { webkitFullscreenElement?: Element; webkitExitFullscreen?: () => void };
-  if (doc.fullscreenElement || doc.webkitFullscreenElement) {
-    if (document.exitFullscreen) void document.exitFullscreen();
-    else if (doc.webkitExitFullscreen) doc.webkitExitFullscreen();
-    return;
-  }
-  if (el && el.requestFullscreen) void el.requestFullscreen().catch(() => undefined);
-  else if (el && el.webkitRequestFullscreen) el.webkitRequestFullscreen();
-  else if (v && v.webkitEnterFullscreen) v.webkitEnterFullscreen(); // iOS Safari
+type FsDocument = Document & { webkitFullscreenElement?: Element; webkitExitFullscreen?: () => void };
+type FsElement = HTMLElement & { webkitRequestFullscreen?: () => void };
+
+function nativeFullscreenElement(): Element | null {
+  const doc = document as FsDocument;
+  return doc.fullscreenElement || doc.webkitFullscreenElement || null;
+}
+
+/**
+ * Fullscreen that keeps our own controls (the room's sync depends on them):
+ * Telegram's fullscreen (Bot API 8.0) or the element Fullscreen API, both
+ * with the player laid out over the whole viewport. iPhones have neither, so
+ * there it is the CSS layout alone; we never hand the video to iOS's native
+ * player, whose controls would bypass the room.
+ */
+function useFullscreen(container: HTMLElement | null) {
+  const [on, setOn] = useState(false);
+
+  useEffect(() => {
+    const onNative = () => {
+      if (!nativeFullscreenElement()) setOn(false);
+    };
+    document.addEventListener('fullscreenchange', onNative);
+    document.addEventListener('webkitfullscreenchange', onNative);
+    const offTg = onTgFullscreenChange((fs) => {
+      if (!fs) setOn(false);
+    });
+    return () => {
+      document.removeEventListener('fullscreenchange', onNative);
+      document.removeEventListener('webkitfullscreenchange', onNative);
+      offTg();
+    };
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('player-max', on);
+    return () => document.documentElement.classList.remove('player-max');
+  }, [on]);
+
+  // Leave Telegram fullscreen when the player goes away (e.g. back to rooms).
+  useEffect(() => () => setTgFullscreen(false), []);
+
+  const toggle = () => {
+    const next = !on;
+    setOn(next);
+    if (tgFullscreenSupported()) {
+      setTgFullscreen(next);
+      return;
+    }
+    const doc = document as FsDocument;
+    if (!next) {
+      if (nativeFullscreenElement()) {
+        if (document.exitFullscreen) void document.exitFullscreen().catch(() => undefined);
+        else if (doc.webkitExitFullscreen) doc.webkitExitFullscreen();
+      }
+      return;
+    }
+    const el = container as FsElement | null;
+    if (el && el.requestFullscreen) void el.requestFullscreen().catch(() => undefined);
+    else if (el && el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+  };
+
+  return { on, toggle };
 }
 
 export function PlayerPanel({ binding, compact }: { binding: PlayerBinding; compact?: boolean }) {
@@ -34,6 +86,9 @@ export function PlayerPanel({ binding, compact }: { binding: PlayerBinding; comp
   usePlayerTick(player);
   const [drag, setDrag] = useState<number | null>(null);
   const [container, setContainer] = useState<HTMLElement | null>(null);
+  const fullscreen = useFullscreen(container);
+  const [idle, setIdle] = useState(false);
+  const [wake, setWake] = useState(0);
 
   const hasMedia = !!(snapshot && snapshot.source);
   const live = !!(snapshot && snapshot.live);
@@ -47,9 +102,23 @@ export function PlayerPanel({ binding, compact }: { binding: PlayerBinding; comp
     fn();
   };
 
+  // In fullscreen the controls float over the video and fade out while playing.
+  useEffect(() => {
+    setIdle(false);
+    if (!fullscreen.on || paused) return;
+    const timer = setTimeout(() => setIdle(true), CONTROLS_IDLE_MS);
+    return () => clearTimeout(timer);
+  }, [fullscreen.on, paused, wake]);
+  const poke = () => setWake((n) => n + 1);
+  const onStageTap = () => {
+    if (!fullscreen.on) return;
+    if (idle) poke();
+    else setIdle(true);
+  };
+
   return (
-    <div class="player" ref={setContainer}>
-      <div class="player-stage">
+    <div class={fullscreen.on ? (idle ? 'player max idle' : 'player max') : 'player'} ref={setContainer}>
+      <div class="player-stage" onClick={onStageTap}>
         <video ref={videoRef} class="video" playsInline />
         {!hasMedia && (
           <div class="player-empty">
@@ -68,7 +137,7 @@ export function PlayerPanel({ binding, compact }: { binding: PlayerBinding; comp
         )}
         {status && <div class="player-status">{status}</div>}
       </div>
-      <div class="controls">
+      <div class="controls" onPointerDown={poke}>
         {!live && (
           <input
             class="seek"
@@ -127,13 +196,13 @@ export function PlayerPanel({ binding, compact }: { binding: PlayerBinding; comp
             ⏭
           </button>
         </div>
-        {!compact && (
+        {(!compact || fullscreen.on) && (
           <div class="controls-row buttons secondary">
             <button disabled={!hasMedia} onClick={() => engine && engine.syncNow()}>
               Sync
             </button>
-            <button disabled={!hasMedia} onClick={() => requestFullscreen(container, videoRef.current)}>
-              Fullscreen
+            <button disabled={!hasMedia && !fullscreen.on} onClick={fullscreen.toggle}>
+              {fullscreen.on ? 'Exit fullscreen' : 'Fullscreen'}
             </button>
           </div>
         )}

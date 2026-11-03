@@ -404,3 +404,87 @@ html.tv-mode body {
   color: #ff8a80;
   font-size: 22px;
 }
+
+/* ---- touch / phone ---- */
+button,
+select,
+input[type='range'] {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.controls {
+  -webkit-user-select: none;
+  user-select: none;
+}
+/* A thumb big enough to grab with a finger. */
+.seek {
+  height: 28px;
+}
+/* Phone held sideways (not fullscreen): keep the controls on screen. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .player:not(.max) .player-stage {
+    padding-top: 0;
+    height: calc(100vh - 150px);
+    min-height: 160px;
+  }
+}
+
+/* ---- fullscreen layout (Telegram fullscreen, Fullscreen API, or CSS only on iPhone) ---- */
+html.player-max,
+html.player-max body {
+  overflow: hidden;
+  background: #000;
+}
+.player.max {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  border-radius: 0;
+  background: #000;
+  color: #fff;
+}
+.player.max .player-stage {
+  position: absolute;
+  inset: 0;
+  padding-top: 0;
+  height: auto;
+}
+.player.max .video {
+  object-fit: contain;
+}
+.player.max .player-status {
+  top: calc(8px + var(--tg-safe-area-inset-top, 0px) + var(--tg-content-safe-area-inset-top, 0px) + env(safe-area-inset-top));
+}
+.player.max .controls {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 24px max(12px, env(safe-area-inset-right), var(--tg-safe-area-inset-right, 0px))
+    max(12px, env(safe-area-inset-bottom), var(--tg-safe-area-inset-bottom, 0px))
+    max(12px, env(safe-area-inset-left), var(--tg-safe-area-inset-left, 0px));
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.8) 35%);
+  transition: opacity 0.25s;
+}
+.player.max .controls-row.buttons button {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+.player.max .controls-row.buttons button.primary {
+  background: var(--button);
+  color: var(--button-text);
+}
+.player.max .controls .speed {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+.player.max .time {
+  color: #ddd;
+}
+.player.max.idle .controls {
+  opacity: 0;
+  pointer-events: none;
+}
+.player.max.idle {
+  cursor: none;
+}

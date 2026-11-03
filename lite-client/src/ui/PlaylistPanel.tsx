@@ -3,6 +3,7 @@ import type { ApiClient } from '../api/http';
 import { addDirectUrlMedia, deleteMedia, listRootMedia, startPlayback } from '../api/endpoints';
 import type { Media } from '../api/types';
 import { errorMessage } from '../format';
+import { confirmAction } from '../telegram';
 
 export function PlaylistPanel(props: {
   api: ApiClient;
@@ -62,8 +63,8 @@ export function PlaylistPanel(props: {
     startPlayback(api, roomId, media.id).catch((e) => setError(errorMessage(e)));
   };
 
-  const remove = (media: Media) => {
-    if (!media.id || !confirm(`Remove “${media.name || 'this video'}”?`)) return;
+  const remove = async (media: Media) => {
+    if (!media.id || !(await confirmAction(`Remove “${media.name || 'this video'}”?`))) return;
     deleteMedia(api, roomId, media.id).then(reload, (e) => setError(errorMessage(e)));
   };
 

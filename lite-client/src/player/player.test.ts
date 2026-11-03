@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { EchoGuard } from './echo';
+import { preferNativeHls } from './player';
 import { isHlsSource, pickSource } from './source';
 
 describe('EchoGuard', () => {
@@ -53,5 +54,19 @@ describe('source selection', () => {
     expect(pickSource(undefined)).toBeNull();
     expect(pickSource({ playbackInfos: {} })).toBeNull();
     expect(pickSource({ playbackInfos: { a: { medias: [{ url: 'x', format: 'dash' }] } } })).toBeNull();
+  });
+});
+
+describe('HLS engine choice', () => {
+  const video = (native: boolean) => ({ canPlayType: () => (native ? 'maybe' : '') }) as unknown as HTMLVideoElement;
+  it('uses native HLS on Apple WebKit (Telegram iOS / Safari)', () => {
+    expect(preferNativeHls(video(true), { vendor: 'Apple Computer, Inc.', hasMse: true })).toBe(true);
+  });
+  it('uses hls.js on Android WebViews that also claim native HLS', () => {
+    expect(preferNativeHls(video(true), { vendor: 'Google Inc.', hasMse: true })).toBe(false);
+  });
+  it('falls back to native when there is no MSE, and never without native support', () => {
+    expect(preferNativeHls(video(true), { vendor: 'Google Inc.', hasMse: false })).toBe(true);
+    expect(preferNativeHls(video(false), { vendor: 'Apple Computer, Inc.', hasMse: true })).toBe(false);
   });
 });
