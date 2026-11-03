@@ -62,12 +62,12 @@ export function mockTvPairing(): Plugin {
         if (url === '/api/tv/pairings/poll') {
           const pairing = pairings.get(String(body.pairingSecret ?? ''));
           if (!pairing || pairing.expiresAt < now || pairing.delivered) {
-            return send(res, 200, { status: 'TV_PAIRING_STATUS_EXPIRED' });
+            return send(res, 200, { status: 'EXPIRED' });
           }
-          if (!pairing.claimed) return send(res, 200, { status: 'TV_PAIRING_STATUS_PENDING' });
+          if (!pairing.claimed) return send(res, 200, { status: 'PENDING' });
           pairing.delivered = true;
           return send(res, 200, {
-            status: 'TV_PAIRING_STATUS_CLAIMED',
+            status: 'CLAIMED',
             roomId: pairing.claimed.roomId,
             login: { user: { id: 'mock', username: 'tv' }, accessToken: pairing.claimed.accessToken, refreshToken: '' },
           });

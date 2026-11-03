@@ -36,6 +36,12 @@ export interface RequestOptions {
   /** Attach the bearer token (default true). */
   auth?: boolean;
   query?: Record<string, string | number | boolean | undefined>;
+  /**
+   * Refresh and retry once on 401 (default true). Disable for endpoints whose
+   * 401 is not about the session (TV claim lockout) so a retry can't count
+   * as another failed attempt.
+   */
+  retryOn401?: boolean;
 }
 
 type RefreshOutcome = 'ok' | 'rejected' | 'failed';
@@ -87,7 +93,7 @@ export class ApiClient {
       }
     }
     let response = await this.send(method, path, body, opts, auth);
-    if (response.status === 401 && auth && this.store.get()) {
+    if (response.status === 401 && auth && opts.retryOn401 !== false && this.store.get()) {
       const outcome = await this.refresh();
       if (outcome === 'ok') response = await this.send(method, path, body, opts, auth);
     }
