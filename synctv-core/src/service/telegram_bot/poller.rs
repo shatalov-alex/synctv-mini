@@ -108,6 +108,9 @@ pub async fn run_polling(
             tracing::warn!(error = %error, "Failed to set the Telegram chat menu button");
         }
     }
+    if let Err(error) = api.set_commands(config.admin_user_id).await {
+        tracing::warn!(error = %error, "Failed to register the Telegram bot commands");
+    }
 
     let bot = TelegramBot::new(
         api.clone(),

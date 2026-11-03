@@ -197,4 +197,50 @@ pub(crate) struct MenuButtonWebApp<'a> {
 }
 
 #[derive(Debug, Serialize)]
+pub(crate) struct BotCommandInfo<'a> {
+    pub command: &'a str,
+    pub description: &'a str,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub(crate) enum BotCommandScope {
+    Default,
+    Chat { chat_id: i64 },
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct SetMyCommands<'a> {
+    pub commands: &'a [BotCommandInfo<'a>],
+    pub scope: BotCommandScope,
+}
+
+#[derive(Debug, Serialize)]
 pub(crate) struct Empty {}
+
+#[cfg(test)]
+mod command_tests {
+    use super::*;
+
+    #[test]
+    fn set_my_commands_serializes_bot_api_scopes() {
+        let commands = [BotCommandInfo {
+            command: "invite",
+            description: "Invite",
+        }];
+        let body = serde_json::to_value(SetMyCommands {
+            commands: &commands,
+            scope: BotCommandScope::Chat { chat_id: 42 },
+        })
+        .expect("serializes");
+        assert_eq!(
+            body,
+            serde_json::json!({
+                "commands": [{"command": "invite", "description": "Invite"}],
+                "scope": {"type": "chat", "chat_id": 42}
+            })
+        );
+        let default = serde_json::to_value(BotCommandScope::Default).expect("serializes");
+        assert_eq!(default, serde_json::json!({"type": "default"}));
+    }
+}
