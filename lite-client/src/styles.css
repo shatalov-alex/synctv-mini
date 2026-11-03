@@ -324,6 +324,9 @@ html.tv-mode body {
 .tv-pair-body p {
   max-width: 26em;
 }
+.tv-notice {
+  color: #ffd180;
+}
 .tv-qr {
   background: #fff;
   border-radius: 8px;

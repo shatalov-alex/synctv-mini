@@ -16,8 +16,8 @@ and invited guests, plus a `/tv` page for smart-TV browsers.
 | Path | Who | What |
 |---|---|---|
 | `/` | Mini App | Signs you in (Telegram initData, an invite redeem, or a stored session), then shows your rooms. Admins can create a room. A guest with a single room goes straight into it. |
-| `/room/:id` | Mini App | Player and controls (play/pause, ±10 s, seek, speed, next/prev, Sync, fullscreen), playlist, add by URL (creator), invite links (creator), and "Watch on TV". Telegram's BackButton returns to `/`. |
-| `/tv` | TV browser | Shows a pairing code and QR code, then plays full screen. Remote: OK/Space/Enter toggles play/pause, ◀ ▶ seek ±10 s, media keys work, and pressing the red key twice unpairs. |
+| `/room/:id` | Mini App | Player and controls (play/pause, ±10 s, seek, speed, next/prev, Sync, fullscreen), playlist, add by URL (creator), invite links (creator), and "Watch on TV": claim a TV code; the creator also gets the paired-TV list with Unpair. Telegram's BackButton returns to `/`. |
+| `/tv` | TV browser | Shows a pairing code and QR code, then plays full screen. Remote: OK/Space/Enter toggles play/pause, ◀ ▶ seek ±10 s, media keys work, and pressing the red key twice unpairs. When the TV is unpaired from the phone, kicked, or its refresh token stops working, it goes back to the pairing screen. |
 | `/pair?code=…` | Phone | Choose one of your rooms and claim the TV's code. |
 
 Launch parameters (Telegram `startapp`):
