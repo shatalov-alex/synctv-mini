@@ -18,6 +18,11 @@ export interface SyncSnapshot {
   error: string | null;
   /** A next/previous HTTP call is in flight. */
   navigating: boolean;
+  /**
+   * Set when we lost access to the room (kicked/unpaired, not a member any
+   * more, room deleted). The engine stops reconnecting; the page should leave.
+   */
+  accessLost: string | null;
 }
 
 /**

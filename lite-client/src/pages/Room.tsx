@@ -39,6 +39,14 @@ export function Room({ roomId, me }: { roomId: string; me: User | null }) {
         <h1 class="grow">{room ? room.name || 'Room' : 'Room'}</h1>
       </header>
       {error && <p class="error">{error}</p>}
+      {snapshot && snapshot.accessLost && (
+        <p class="error">
+          {snapshot.accessLost}{' '}
+          <button class="ghost" onClick={() => navigate('/')}>
+            Back to rooms
+          </button>
+        </p>
+      )}
       <PlayerPanel binding={binding} />
       <PlaylistPanel
         api={api}
@@ -47,7 +55,7 @@ export function Room({ roomId, me }: { roomId: string; me: User | null }) {
         canManage={isCreator}
       />
       {isCreator && <InvitePanel api={api} roomId={roomId} />}
-      <PairTvPanel api={api} roomId={roomId} />
+      <PairTvPanel api={api} roomId={roomId} isCreator={isCreator} />
     </main>
   );
 }

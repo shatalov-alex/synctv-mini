@@ -68,7 +68,7 @@ export type Incoming =
   | { kind: 'state'; state: WirePlaybackState }
   | { kind: 'playback'; playback: Playback }
   | { kind: 'error'; code: number; message: string; opId: string }
-  | { kind: 'termination'; message: string }
+  | { kind: 'termination'; message: string; code: number }
   | { kind: 'other' };
 
 export function parseIncoming(text: string): Incoming {
@@ -97,8 +97,20 @@ export function parseIncoming(text: string): Incoming {
       opId: String(msg.error.clientOperationId || ''),
     };
   }
-  if (msg.termination) return { kind: 'termination', message: String(msg.termination.message || '') };
+  if (msg.termination) {
+    return { kind: 'termination', message: String(msg.termination.message || ''), code: Number(msg.termination.code || 0) };
+  }
   return { kind: 'other' };
+}
+
+/**
+ * RealtimeTerminationCode values meaning access to the room is gone
+ * (USER/ROOM access revoked, membership revoked, guest revoked, room deleted,
+ * banned, owner inactive). CONNECTION_REVOKED (1) and UNSPECIFIED reconnect;
+ * if access really is gone the next ticket request fails with 403.
+ */
+export function terminationLosesAccess(code: number): boolean {
+  return code >= 2 && code <= 8;
 }
 
 /** Live sources: PlaybackKind LIVE = 2 (integers on WS; names via HTTP). */

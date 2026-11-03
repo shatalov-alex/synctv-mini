@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'preact/hooks';
 import { api } from '../auth';
 import { listMyRooms } from '../api/endpoints';
-import { claimPairing, normalizeCode } from '../api/tv';
+import { claimErrorMessage, claimPairing, normalizeCode } from '../api/tv';
+import { CodeInput } from '../ui/PairTvPanel';
 import type { MyRoom, User } from '../api/types';
 import { errorMessage } from '../format';
 import { navigate, roomPath } from '../router';
@@ -48,7 +49,7 @@ export function Pair({ code, me }: { code: string; me: User | null }) {
       setState('done');
     } catch (e) {
       setState('idle');
-      setError(errorMessage(e));
+      setError(claimErrorMessage(e));
     }
   };
 
@@ -65,15 +66,7 @@ export function Pair({ code, me }: { code: string; me: User | null }) {
       ) : (
         <form class="card stack" onSubmit={claim}>
           <label class="small muted">Code shown on the TV</label>
-          <input
-            class="code-input"
-            type="text"
-            inputMode="numeric"
-            autoComplete="off"
-            maxLength={12}
-            value={typed}
-            onInput={(e) => setTyped((e.target as HTMLInputElement).value)}
-          />
+          <CodeInput value={typed} onInput={setTyped} />
           <label class="small muted">Room to show</label>
           {rooms === null ? (
             <p class="muted">Loading rooms…</p>

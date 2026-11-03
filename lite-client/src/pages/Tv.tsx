@@ -2,7 +2,8 @@
 // signed-in phone claims, then plays the room, driven by the remote.
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { createApi } from '../auth';
-import { createPairing, pollPairing, type TvPairing } from '../api/tv';
+import { ApiError } from '../api/http';
+import { createPairing, pollPairing, pollRetryDelayMs, startRetryDelayMs, type TvPairing } from '../api/tv';
 import { formatTime } from '../format';
 import { pairLink } from '../links';
 import { usePlayer, usePlayerTick } from '../ui/usePlayer';
@@ -32,37 +33,44 @@ function saveRoom(roomId: string | null): void {
 
 export function Tv() {
   const [roomId, setRoomId] = useState(() => (tvApi.store.get() ? savedRoom() : ''));
+  /** Why we are back on the pairing screen (unpaired from the phone, session ended). */
+  const [notice, setNotice] = useState('');
 
   useEffect(() => {
     document.documentElement.classList.add('tv-mode');
     tvApi.schedule();
+    // Refresh fails once the TV is unpaired: back to pairing.
     tvApi.setOnSignedOut(() => {
       saveRoom(null);
+      setNotice('This TV was unpaired.');
       setRoomId('');
     });
     return () => document.documentElement.classList.remove('tv-mode');
   }, []);
 
-  const unpair = () => {
+  const unpair = (reason?: string) => {
     tvApi.signOut();
     saveRoom(null);
+    setNotice(reason || '');
     setRoomId('');
   };
 
   if (!roomId) {
     return (
       <Pairing
+        notice={notice}
         onPaired={(id) => {
+          setNotice('');
           saveRoom(id);
           setRoomId(id);
         }}
       />
     );
   }
-  return <Watch roomId={roomId} onUnpair={unpair} />;
+  return <Watch key={roomId} roomId={roomId} onUnpair={unpair} />;
 }
 
-function Pairing({ onPaired }: { onPaired: (roomId: string) => void }) {
+function Pairing({ onPaired, notice }: { onPaired: (roomId: string) => void; notice: string }) {
   const [pairing, setPairing] = useState<TvPairing | null>(null);
   const [qr, setQr] = useState('');
   const [error, setError] = useState('');
@@ -72,8 +80,8 @@ function Pairing({ onPaired }: { onPaired: (roomId: string) => void }) {
   useEffect(() => {
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
-    const retry = () => {
-      if (!stopped) timer = setTimeout(() => setGeneration((g) => g + 1), 5000);
+    const retry = (error: unknown) => {
+      if (!stopped) timer = setTimeout(() => setGeneration((g) => g + 1), startRetryDelayMs(error));
     };
     createPairing(tvApi).then(
       (p) => {
@@ -98,16 +106,21 @@ function Pairing({ onPaired }: { onPaired: (roomId: string) => void }) {
                 timer = setTimeout(poll, p.pollIntervalMs);
               }
             },
-            () => {
-              if (!stopped) timer = setTimeout(poll, Math.max(p.pollIntervalMs, 3000));
+            (error) => {
+              if (!stopped) timer = setTimeout(poll, pollRetryDelayMs(error, p.pollIntervalMs));
             },
           );
         };
         timer = setTimeout(poll, p.pollIntervalMs);
       },
-      () => {
-        setError('Cannot reach the server. Retrying…');
-        retry();
+      (error) => {
+        if (stopped) return;
+        setError(
+          error instanceof ApiError && error.status === 429
+            ? 'Too many pairing attempts. Trying again in a minute…'
+            : 'Cannot reach the server. Retrying…',
+        );
+        retry(error);
       },
     );
     return () => {
@@ -133,6 +146,7 @@ function Pairing({ onPaired }: { onPaired: (roomId: string) => void }) {
   return (
     <main class="tv-pair">
       <h1>SyncTV</h1>
+      {notice && <p class="tv-notice">{notice}</p>}
       {pairing ? (
         <div class="tv-pair-body">
           {qr && <img class="tv-qr" src={qr} alt="" width={280} height={280} />}
@@ -149,9 +163,15 @@ function Pairing({ onPaired }: { onPaired: (roomId: string) => void }) {
   );
 }
 
-function Watch({ roomId, onUnpair }: { roomId: string; onUnpair: () => void }) {
+function Watch({ roomId, onUnpair }: { roomId: string; onUnpair: (reason?: string) => void }) {
   const binding = usePlayer(tvApi, roomId);
   const { engine, player, snapshot, videoRef } = binding;
+  const accessLost = snapshot ? snapshot.accessLost : null;
+
+  // Kicked / unpaired / no longer a member: drop the session and re-pair.
+  useEffect(() => {
+    if (accessLost) onUnpair('This TV was unpaired or lost access to the room.');
+  }, [accessLost]);
   usePlayerTick(player);
   const [overlay, setOverlay] = useState(true);
   const overlayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
