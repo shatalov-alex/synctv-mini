@@ -39,7 +39,7 @@ pub fn extract_client_ip(
     )
 }
 
-async fn extract_auth_request(
+pub(super) async fn extract_auth_request(
     state: &AppState,
     request: Request,
 ) -> Result<(synctv_api_common::impls::RequestMetadata, Request), AppError> {
@@ -60,7 +60,7 @@ fn map_json_rejection(err: &axum::extract::rejection::JsonRejection) -> ApiError
     }
 }
 
-async fn parse_auth_json<T>(request: Request) -> Result<T, ApiError>
+pub(super) async fn parse_auth_json<T>(request: Request) -> Result<T, ApiError>
 where
     T: DeserializeOwned,
 {

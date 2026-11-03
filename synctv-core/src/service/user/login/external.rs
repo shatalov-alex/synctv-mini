@@ -3,10 +3,10 @@ use std::net::IpAddr;
 use synctv_common::ExecutionControl;
 
 use crate::{
-    models::UserId,
+    models::{SignupMethod, User, UserId},
     repository::TelegramIdentityRepository,
     service::{
-        auth::verify_telegram_init_data,
+        auth::{verify_telegram_init_data, TelegramInitData},
         user::{
             session_types::{AuthFactorMethod, AuthenticatedLogin},
             UserService,
@@ -39,24 +39,15 @@ impl UserService {
         client_ip: Option<IpAddr>,
         control: Option<&ExecutionControl>,
     ) -> Result<AuthenticatedLogin> {
-        self.brute_force
-            .check_ip_allowed_with_control(client_ip, control)
+        let verified = self
+            .verify_telegram_launch_with_control(
+                init_data,
+                login.bot_token,
+                login.init_data_max_age_secs,
+                client_ip,
+                control,
+            )
             .await?;
-        let now = crate::SystemClock.now().timestamp();
-        let verified = match verify_telegram_init_data(
-            init_data,
-            login.bot_token,
-            now,
-            login.init_data_max_age_secs,
-        ) {
-            Ok(verified) => verified,
-            Err(error) => {
-                self.brute_force
-                    .record_ip_failure_with_control(client_ip, control)
-                    .await?;
-                return Err(error);
-            }
-        };
         let brute_force_key = format!("telegram:{}", verified.user_id);
         if login.admin_telegram_user_id == 0 || verified.user_id != login.admin_telegram_user_id {
             self.record_external_login_failure_with_control(
@@ -180,9 +171,73 @@ impl UserService {
         .await
     }
 
+    /// Verify Mini App `init_data` from any Telegram user (signature and freshness only).
+    pub async fn verify_telegram_launch_with_control(
+        &self,
+        init_data: &str,
+        bot_token: &str,
+        max_age_secs: i64,
+        client_ip: Option<IpAddr>,
+        control: Option<&ExecutionControl>,
+    ) -> Result<TelegramInitData> {
+        self.brute_force
+            .check_ip_allowed_with_control(client_ip, control)
+            .await?;
+        let now = crate::SystemClock.now().timestamp();
+        match verify_telegram_init_data(init_data, bot_token, now, max_age_secs) {
+            Ok(verified) => Ok(verified),
+            Err(error) => {
+                self.brute_force
+                    .record_ip_failure_with_control(client_ip, control)
+                    .await?;
+                Err(error)
+            }
+        }
+    }
+
+    /// The user mapped to this Telegram account, creating a plain account (`tg_<id>`, no
+    /// password or email, so it can only sign in through Telegram) on first sight.
+    pub async fn find_or_create_telegram_user(&self, verified: &TelegramInitData) -> Result<User> {
+        let identities = TelegramIdentityRepository::new(self.repository.pool().clone());
+        if let Some(user_id) = identities.find_user_id(verified.user_id).await? {
+            let user = self
+                .repository
+                .get_by_id(&user_id)
+                .await?
+                .ok_or_else(|| Error::Authentication("Authentication failed".to_string()))?;
+            Self::validate_user_access(&user)?;
+            identities
+                .upsert(
+                    verified.user_id,
+                    &user.id,
+                    &verified.first_name,
+                    verified.username.as_deref(),
+                )
+                .await?;
+            return Ok(user);
+        }
+
+        let user = self
+            .repository
+            .create(&User::new(
+                format!("tg_{}", verified.user_id),
+                SignupMethod::AdminCreated,
+            ))
+            .await?;
+        identities
+            .upsert(
+                verified.user_id,
+                &user.id,
+                &verified.first_name,
+                verified.username.as_deref(),
+            )
+            .await?;
+        Ok(user)
+    }
+
     /// Issue tokens for a user whose Telegram account the caller has already verified and
     /// mapped in `auth_telegram_identities`.
-    pub(crate) async fn login_with_verified_telegram_with_control(
+    pub async fn login_with_verified_telegram_with_control(
         &self,
         user_id: &UserId,
         telegram_user_id: i64,

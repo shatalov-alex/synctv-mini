@@ -5574,3 +5574,65 @@ message DeleteNotificationResponse {}
 message DeleteAllReadRequest {}
 
 message DeleteAllReadResponse {}
+
+// Room invite links. A link is `t.me/<bot>/<app>?startapp=<token>`; redeeming it from the
+// Mini App adds the Telegram user to the room with playback control only.
+message RoomInvite {
+  int64 id = 1;
+  // Unix seconds; 0 = never expires.
+  int64 expires_at = 2;
+  // 0 = unlimited.
+  int32 max_uses = 3;
+  int32 uses = 4;
+  bool revoked = 5;
+  int64 created_at = 6;
+}
+
+message CreateRoomInviteRequest {
+  // 0 = default (24 hours). At most 30 days.
+  int64 ttl_seconds = 1 [(buf.validate.field).int64 = {
+    gte: 0
+    lte: 2592000
+  }];
+  // 0 = default (1 person).
+  int32 max_uses = 2 [(buf.validate.field).int32 = {
+    gte: 0
+    lte: 100
+  }];
+}
+
+message CreateRoomInviteResponse {
+  RoomInvite invite = 1;
+  // Shown only once; only its hash is stored.
+  string token = 2;
+}
+
+message ListRoomInvitesResponse {
+  repeated RoomInvite invites = 1;
+}
+
+message RevokeRoomInvitesRequest {
+  // 0 = revoke every live invite of the room.
+  int64 invite_id = 1 [(buf.validate.field).int64 = {gte: 0}];
+}
+
+message RevokeRoomInvitesResponse {
+  uint64 revoked = 1;
+}
+
+message RedeemRoomInviteRequest {
+  // Raw `Telegram.WebApp.initData`.
+  string init_data = 1 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 8192
+  }];
+  // Invite token; empty = use the Mini App `start_param`.
+  string token = 2 [(buf.validate.field).string = {
+    max_len: 64
+  }];
+}
+
+message RedeemRoomInviteResponse {
+  LoginResponse login = 1;
+  string room_id = 2;
+}

@@ -67,8 +67,8 @@ pub use auth::{
     BruteForceProtectionService, Claims, GuestClaims, GuestTokenValidator, InMemoryAttemptTracker,
     InMemoryTokenBlacklistStore, JwtService, JwtServiceOptions, JwtValidator,
     OpaquePasswordService, PgTokenBlacklistStore, RedisAttemptTracker, SecurityPipeline,
-    SecurityPipelineRuntime, TieredTokenBlacklistStore, TokenAuthContext, TokenBlacklistStore,
-    TokenCredentialBinding, TokenType,
+    SecurityPipelineRuntime, TelegramInitData, TieredTokenBlacklistStore, TokenAuthContext,
+    TokenBlacklistStore, TokenCredentialBinding, TokenType,
 };
 pub use ban_record::{
     BanRecordListQuery, BanRecordPage, BanRecordRow, BanRecordService, BanRecordTargetType,
@@ -199,6 +199,7 @@ pub use review::{
     UserRegistrationReviewRecord,
 };
 pub(crate) use room::soft_delete_room_and_cleanup_in_tx;
+pub use room::{invite_token_hash, INVITED_GUEST_PERMISSIONS};
 pub use room::{
     local_room_opaque_password_login_session_store,
     local_room_opaque_password_registration_session_store,

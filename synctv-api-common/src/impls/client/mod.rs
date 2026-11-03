@@ -14,6 +14,7 @@
 //! - `webrtc`: ICE servers, network quality
 
 mod auth;
+mod invites;
 pub use auth::login_outcome_to_proto;
 pub mod file_download;
 pub mod live_danmaku;

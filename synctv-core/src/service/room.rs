@@ -115,6 +115,8 @@ pub use entries_outbox::RealtimeOutboxDeleteEntriesEventFactory;
 mod entries_request;
 use entries_request::{normalize_delete_entries_request, pending_delete_entries_plan};
 mod guest_access;
+mod invites;
+pub use invites::{invite_token_hash, INVITED_GUEST_PERMISSIONS};
 mod join;
 mod lifecycle;
 mod media_playback_chat;

@@ -20,7 +20,7 @@ pub use opaque_password::OpaquePasswordService;
 pub use security_pipeline::{
     AuthErrorCategory, AuthenticatedToken, SecurityPipeline, SecurityPipelineRuntime,
 };
-pub use telegram::verify_init_data as verify_telegram_init_data;
+pub use telegram::{verify_init_data as verify_telegram_init_data, TelegramInitData};
 pub use token_blacklist::{
     InMemoryTokenBlacklistStore, PgTokenBlacklistStore, TieredTokenBlacklistStore,
     TokenBlacklistStore,

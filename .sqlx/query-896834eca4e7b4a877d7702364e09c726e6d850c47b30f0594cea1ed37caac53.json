@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE room_invites\n            SET revoked_at = CURRENT_TIMESTAMP\n            WHERE room_id = $1\n              AND revoked_at IS NULL\n              AND ($2::BIGINT IS NULL OR id = $2)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "896834eca4e7b4a877d7702364e09c726e6d850c47b30f0594cea1ed37caac53"
+}

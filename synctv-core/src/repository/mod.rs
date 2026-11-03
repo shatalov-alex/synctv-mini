@@ -23,6 +23,7 @@ pub mod realtime_outbox;
 pub(crate) mod review;
 pub(crate) mod room;
 pub(crate) mod room_cleanup;
+pub(crate) mod room_invite;
 pub mod room_member;
 pub(crate) mod room_password;
 pub(crate) mod room_resource_event;
@@ -86,6 +87,7 @@ pub use review::{
     UserRegistrationReviewRecord,
 };
 pub use room::{RoomDiscoveryViewerState, RoomRepository};
+pub use room_invite::{RoomInvite, RoomInviteRepository};
 pub use room_member::RoomMemberRepository;
 pub use room_password::RoomPasswordRepository;
 pub use room_resource_event::{
