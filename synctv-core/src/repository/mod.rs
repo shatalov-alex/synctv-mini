@@ -34,6 +34,7 @@ mod sqlx_types;
 pub(crate) mod system_stats;
 pub(crate) mod telegram_identity;
 pub(crate) mod totp_credential;
+pub(crate) mod tv_pairing;
 pub(crate) mod user;
 pub(crate) mod user_email;
 pub(crate) mod user_oauth_provider;
@@ -101,6 +102,10 @@ pub use settings::SettingsRepository;
 pub use system_stats::{SystemStats, SystemStatsRepository};
 pub use telegram_identity::TelegramIdentityRepository;
 pub use totp_credential::{TotpCredential, TotpCredentialRepository};
+pub use tv_pairing::{
+    ConsumedTvPairing, TvDevice, TvDeviceRepository, TvDeviceSummary, TvPairing,
+    TvPairingRepository,
+};
 pub use user::UserRepository;
 pub use user_email::{UserEmailRepository, UserWithEmail};
 pub use user_oauth_provider::UserOAuthProviderRepository;

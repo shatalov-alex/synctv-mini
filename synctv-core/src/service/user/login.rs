@@ -455,7 +455,8 @@ mod tests {
                 AuthFactorMethod::Email => 4,
                 AuthFactorMethod::Totp
                 | AuthFactorMethod::RecoveryCode
-                | AuthFactorMethod::Telegram => 0,
+                | AuthFactorMethod::Telegram
+                | AuthFactorMethod::TvPairing => 0,
             }
         })
     }

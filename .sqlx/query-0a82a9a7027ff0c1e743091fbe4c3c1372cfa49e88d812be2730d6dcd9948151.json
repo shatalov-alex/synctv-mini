@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM tv_pairings WHERE expires_at <= CURRENT_TIMESTAMP",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "0a82a9a7027ff0c1e743091fbe4c3c1372cfa49e88d812be2730d6dcd9948151"
+}

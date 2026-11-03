@@ -261,4 +261,76 @@ impl UserService {
         )
         .await
     }
+
+    /// Create the account a newly paired TV signs in as: `tv_<id>`, plain user role, no
+    /// password or email, so tokens issued through pairing are its only way in.
+    pub async fn create_tv_user(&self) -> Result<User> {
+        let username = format!("tv_{}", synctv_common::snanoid!(10).to_lowercase());
+        self.repository
+            .create(&User::new(username, SignupMethod::AdminCreated))
+            .await
+    }
+
+    /// Issue tokens for a paired TV, bound to its `tv_devices` row.
+    pub async fn login_with_tv_device_with_control(
+        &self,
+        user_id: &UserId,
+        tv_device_id: i64,
+        client_ip: Option<IpAddr>,
+        control: Option<&ExecutionControl>,
+    ) -> Result<AuthenticatedLogin> {
+        let user = self
+            .repository
+            .get_by_id(user_id)
+            .await?
+            .ok_or_else(|| Error::Authentication("Authentication failed".to_string()))?;
+
+        self.complete_authenticated_login_with_control(
+            user,
+            AuthFactorMethod::TvPairing,
+            TokenCredentialBinding::TvDevice {
+                device_id: tv_device_id,
+            },
+            &format!("tv_device:{tv_device_id}"),
+            client_ip,
+            control,
+        )
+        .await
+    }
+
+    /// Brute-force gate for claiming TV pairing codes: per claiming user and per IP.
+    pub async fn check_tv_pairing_claim_allowed_with_control(
+        &self,
+        claimer_id: &UserId,
+        client_ip: Option<IpAddr>,
+        control: Option<&ExecutionControl>,
+    ) -> Result<()> {
+        self.brute_force
+            .check_subject_key_allowed_with_control(
+                &Self::tv_pairing_claim_key(claimer_id),
+                client_ip,
+                control,
+            )
+            .await
+    }
+
+    /// Count a wrong or expired pairing code against the claiming user and IP.
+    pub async fn record_tv_pairing_claim_failure_with_control(
+        &self,
+        claimer_id: &UserId,
+        client_ip: Option<IpAddr>,
+        control: Option<&ExecutionControl>,
+    ) -> Result<()> {
+        self.brute_force
+            .record_subject_key_failure_with_control(
+                &Self::tv_pairing_claim_key(claimer_id),
+                client_ip,
+                control,
+            )
+            .await
+    }
+
+    fn tv_pairing_claim_key(claimer_id: &UserId) -> String {
+        format!("tv_pairing_claim:{claimer_id}")
+    }
 }
