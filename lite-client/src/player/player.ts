@@ -73,6 +73,21 @@ export function nativeHlsSupported(video: HTMLVideoElement): boolean {
   return !!video.canPlayType && video.canPlayType('application/vnd.apple.mpegurl') !== '';
 }
 
+/**
+ * Native HLS only on Apple's WebKit (Safari, Telegram for iOS/macOS), where it
+ * is the best engine. Android WebViews (Telegram for Android) and newer Chrome
+ * also claim native HLS, but their player seeks coarsely and may ignore
+ * playbackRate, which breaks sync; hls.js over MSE behaves the same everywhere.
+ */
+export function preferNativeHls(video: HTMLVideoElement, env: { vendor: string; hasMse: boolean }): boolean {
+  if (!nativeHlsSupported(video)) return false;
+  return /apple/i.test(env.vendor) || !env.hasMse;
+}
+
+function hlsEnv(): { vendor: string; hasMse: boolean } {
+  return { vendor: navigator.vendor || '', hasMse: 'MediaSource' in window || 'ManagedMediaSource' in window };
+}
+
 export class VideoPlayer {
   private readonly echo = new EchoGuard();
   private listeners: PlayerListener[] = [];
@@ -183,6 +198,11 @@ export class VideoPlayer {
     this.video.muted = muted;
   }
 
+  /** 'metadata' while only the duration is needed (remote mode), else 'auto'. */
+  setPreload(preload: 'metadata' | 'auto'): void {
+    this.video.preload = preload;
+  }
+
   /** Runs fn with every resulting element event reported as programmatic. */
   programmatic(kinds: EchoKind[], fn: () => void): void {
     for (const kind of kinds) this.echo.expect(kind);
@@ -203,7 +223,7 @@ export class VideoPlayer {
       this.video.load();
       return;
     }
-    if (source.kind === 'hls' && !nativeHlsSupported(this.video)) {
+    if (source.kind === 'hls' && !preferNativeHls(this.video, hlsEnv())) {
       await this.attachHls(source.url, token);
       return;
     }
@@ -239,12 +259,24 @@ export class VideoPlayer {
         hls.recoverMediaError();
       } else if (data.type === Hls.ErrorTypes.NETWORK_ERROR && mediaRecoveries++ < 3) {
         hls.startLoad();
+      } else if (token === this.loadToken && this.tryNativeHls(url)) {
+        // hls.js never got going (often a stream without CORS headers, which
+        // only MSE needs): let the element's own HLS player try instead.
       } else {
         this.emit('error', true, data.details || 'HLS playback error');
       }
     });
     hls.attachMedia(this.video);
     hls.loadSource(url);
+  }
+
+  private tryNativeHls(url: string): boolean {
+    if (this.triedHlsFallback || this.video.readyState > 0 || !nativeHlsSupported(this.video)) return false;
+    this.triedHlsFallback = true;
+    this.teardownHls();
+    this.video.src = url;
+    this.video.load();
+    return true;
   }
 
   private teardownHls(): void {
@@ -294,7 +326,8 @@ function mediaErrorMessage(code: number): string {
     case 3:
       return 'The video could not be decoded';
     case 4:
-      return 'This video format or URL is not supported here';
+      // Browsers also report a refused request (403, expired link) this way.
+      return 'This video could not be opened: the format is not supported or the link refused this device';
     default:
       return 'Playback error';
   }

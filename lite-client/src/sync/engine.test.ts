@@ -49,7 +49,13 @@ function fakePlayer() {
     ready: true,
     muted: false,
     currentSource: null as unknown,
-    on: () => () => {},
+    buffering: false,
+    listeners: [] as Array<(e: { type: string }) => void>,
+    on: (l: (e: { type: string }) => void) => {
+      p.listeners.push(l);
+      return () => {};
+    },
+    emit: (type: string) => p.listeners.forEach((l) => l({ type })),
     load: async (source: unknown) => {
       p.currentSource = source;
       calls.push(source ? 'load' : 'unload');
@@ -72,6 +78,7 @@ function fakePlayer() {
       p.playbackRate = r;
     },
     setMuted: () => {},
+    setPreload: () => {},
   };
   return p;
 }
@@ -317,5 +324,209 @@ describe('RoomSyncEngine', () => {
     await flush();
     expect(engine.snapshot().accessLost).toBeNull();
     expect(api.requests.filter((r) => r.path === '/api/tickets').length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe('RoomSyncEngine on phones (backgrounding)', () => {
+  let doc: EventTarget & { visibilityState: string };
+  beforeEach(() => {
+    doc = Object.assign(new EventTarget(), { visibilityState: 'visible' });
+    vi.stubGlobal('document', doc);
+    vi.stubGlobal('window', new EventTarget());
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+  const setVisibility = (value: string) => {
+    doc.visibilityState = value;
+    doc.dispatchEvent(new Event('visibilitychange'));
+  };
+
+  it('reconnects right away on return instead of waiting out the backoff', async () => {
+    const { ws } = await setup();
+    setVisibility('hidden');
+    ws.close(); // the OS killed the socket in the background
+    expect(FakeWS.all).toHaveLength(1); // backoff timer pending
+    setVisibility('visible');
+    await flush();
+    expect(FakeWS.all).toHaveLength(2);
+  });
+
+  it('replaces a socket that still claims OPEN after a long background', async () => {
+    const { ws } = await setup();
+    setVisibility('hidden');
+    vi.setSystemTime(T0 + 60_000);
+    setVisibility('visible');
+    await flush();
+    expect(FakeWS.all).toHaveLength(2);
+    expect(ws.readyState).toBe(3);
+    // A short hide keeps the live socket.
+    FakeWS.all[1].open();
+    setVisibility('hidden');
+    vi.setSystemTime(T0 + 65_000);
+    setVisibility('visible');
+    await flush();
+    expect(FakeWS.all).toHaveLength(2);
+  });
+
+  it('overlapping connects open only one socket', async () => {
+    const { ws } = await setup();
+    ws.close();
+    window.dispatchEvent(new Event('online'));
+    window.dispatchEvent(new Event('online'));
+    await flush();
+    expect(FakeWS.all.filter((w) => w.readyState !== 3)).toHaveLength(1);
+  });
+
+  it('stops listening once disposed', async () => {
+    const { ws, engine } = await setup();
+    engine.dispose();
+    ws.close();
+    setVisibility('hidden');
+    vi.setSystemTime(T0 + 60_000);
+    setVisibility('visible');
+    await flush();
+    expect(FakeWS.all).toHaveLength(1);
+  });
+});
+
+describe('RoomSyncEngine post-start settle', () => {
+  it('re-syncs once after a forced seek+play starts late, then stops', async () => {
+    const { ws, player } = await setup();
+    ws.push(playbackEvent(playback));
+    ws.push(stateEvent(state()));
+    await flush();
+    expect(player.calls).toEqual(['load', 'seek:50', 'play']);
+    player.calls.length = 0;
+    // Buffering ate 0.8 s; when measured (1 s later) the room is at 51.8, the player at 51.
+    vi.setSystemTime(T0 + 800);
+    player.emit('playing');
+    player.currentTime = 51;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(player.calls).toEqual(['seek:51.8']);
+    // A later stall/restart does not trigger another settle.
+    player.calls.length = 0;
+    player.currentTime = 52; // room at 52.8 a second later: 0.8 s off again
+    player.emit('playing');
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(player.calls).toEqual([]);
+  });
+
+  it('leaves small drift alone', async () => {
+    const { ws, player } = await setup();
+    ws.push(playbackEvent(playback));
+    ws.push(stateEvent(state()));
+    await flush();
+    player.calls.length = 0;
+    vi.setSystemTime(T0 + 100);
+    player.emit('playing');
+    player.currentTime = 51; // room at 51.1 when measured
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(player.calls).toEqual([]);
+  });
+});
+
+describe('RoomSyncEngine precise sync while paused', () => {
+  it('a paused room lines up within 0.2 s, and the following start keeps it', async () => {
+    const { ws, player } = await setup();
+    ws.push(playbackEvent(playback));
+    ws.push(stateEvent(state({ isPlaying: false, position: 0 })));
+    await flush();
+    player.calls.length = 0;
+    player.currentTime = 1.0; // under the 1.2 s auto-seek threshold
+    ws.push(stateEvent(state({ isPlaying: false, position: 0, version: '2' })));
+    await flush();
+    expect(player.calls).toEqual(['seek:0']);
+    player.calls.length = 0;
+    player.currentTime = 0.5;
+    ws.push(stateEvent(state({ isPlaying: true, position: 0, version: '3' })));
+    await flush();
+    expect(player.calls).toEqual(['seek:0', 'play']);
+  });
+});
+
+describe('RoomSyncEngine playback errors', () => {
+  it('reloads with a freshly signed URL (expired proxy signature)', async () => {
+    const { ws, player, api } = await setup();
+    const signed = (sig: string) => ({ ...playback, playbackInfos: { proxy: { medias: [{ url: `https://srv/stream?sig=${sig}` }] } } });
+    ws.push(playbackEvent(signed('old')));
+    ws.push(stateEvent(state()));
+    await flush();
+    const original = api.request;
+    (api as any).request = async (method: string, path: string) => {
+      if (path === '/api/rooms/room_1/playback') return { playback: signed('new') };
+      return original(method, path);
+    };
+    player.calls.length = 0;
+    player.emit('error');
+    await flush();
+    expect((player.currentSource as { url: string }).url).toBe('https://srv/stream?sig=new');
+    expect(player.calls[0]).toBe('load');
+  });
+
+  it('falls back to the old URL when the refresh fails', async () => {
+    const { ws, player } = await setup();
+    ws.push(playbackEvent(playback));
+    ws.push(stateEvent(state()));
+    await flush();
+    player.calls.length = 0;
+    player.emit('error'); // fakeApi answers {} for /playback
+    await flush();
+    expect((player.currentSource as { url: string }).url).toBe('https://x/a.mp4');
+    expect(player.calls[0]).toBe('load');
+  });
+});
+
+describe('RoomSyncEngine remote mode (a paired TV plays, the phone controls)', () => {
+  async function setupRemote() {
+    const player = fakePlayer();
+    const api = fakeApi();
+    const engine = new RoomSyncEngine(api as unknown as ApiClient, player as unknown as VideoPlayer, {
+      origin: 'https://tv.example',
+      remote: true,
+    });
+    engine.connect('room_1');
+    await flush();
+    const ws = FakeWS.all[FakeWS.all.length - 1];
+    ws.open();
+    ws.push(playbackEvent(playback));
+    ws.push(stateEvent(state()));
+    await flush();
+    return { player, api, engine, ws };
+  }
+  const played = (calls: string[]) => calls.filter((c) => c === 'play' || c.startsWith('seek'));
+
+  it('never plays or seeks locally, even through the 2 s loop', async () => {
+    const { player, engine } = await setupRemote();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(played(player.calls)).toEqual([]);
+    expect(player.calls).toContain('load'); // metadata only, for the duration
+    expect(engine.snapshot().remote).toBe(true);
+  });
+
+  it('positions come from the room clock; commands carry them', async () => {
+    const { player, engine, ws } = await setupRemote();
+    vi.setSystemTime(T0 + 4000);
+    expect(engine.position()).toBeCloseTo(54, 1);
+    engine.pause();
+    const [pause] = ws.updates();
+    expect(pause).toMatchObject({ type: 2, playing: false });
+    expect(pause.position).toBeCloseTo(54, 1);
+    engine.seek(engine.position() + 10);
+    expect(ws.updates()[1].position).toBeCloseTo(64, 1);
+    engine.play();
+    expect(ws.updates()[2]).toMatchObject({ playing: true });
+    expect(played(player.calls)).toEqual([]);
+  });
+
+  it('switching to "watch here" starts the phone in sync', async () => {
+    const { player, engine } = await setupRemote();
+    vi.setSystemTime(T0 + 3000);
+    player.calls.length = 0;
+    engine.setRemote(false);
+    await flush();
+    expect(player.calls).toEqual(['seek:53', 'play']);
+    engine.setRemote(true);
+    expect(player.paused).toBe(true);
   });
 });

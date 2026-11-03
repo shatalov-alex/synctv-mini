@@ -23,6 +23,8 @@ export interface SyncSnapshot {
    * more, room deleted). The engine stops reconnecting; the page should leave.
    */
   accessLost: string | null;
+  /** Remote mode: this device only controls the room (e.g. a TV plays it); no local playback. */
+  remote: boolean;
 }
 
 /**
@@ -44,5 +46,9 @@ export interface SyncEngine {
   syncNow(): void;
   /** Local-only: start/unmute after a user gesture when autoplay was blocked. */
   unlock(): void;
+  /** Remote mode on/off (call from a user gesture: turning it off starts playback). */
+  setRemote(on: boolean): void;
+  /** Room position now: the local player's, or in remote mode the room clock's. */
+  position(): number;
   dispose(): void;
 }

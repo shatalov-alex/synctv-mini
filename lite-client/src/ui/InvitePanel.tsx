@@ -4,7 +4,7 @@ import { createInvite, listInvites, revokeInvites } from '../api/endpoints';
 import { toNumber, type RoomInvite } from '../api/types';
 import { copyText, errorMessage, formatExpiry } from '../format';
 import { inviteLink, telegramShareLink } from '../links';
-import { openTelegramLink } from '../telegram';
+import { confirmAction, openTelegramLink } from '../telegram';
 
 const TTL_OPTIONS: Array<[string, number]> = [
   ['1 hour', 3600],
@@ -53,7 +53,7 @@ export function InvitePanel({ api, roomId }: { api: ApiClient; roomId: string })
   };
 
   const revoke = async (id: number | string) => {
-    if (id === 0 && !confirm('Revoke all active invite links?')) return;
+    if (id === 0 && !(await confirmAction('Revoke all active invite links?'))) return;
     try {
       await revokeInvites(api, roomId, id);
       await reload();

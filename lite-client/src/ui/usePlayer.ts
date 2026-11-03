@@ -12,7 +12,7 @@ export interface PlayerBinding {
   snapshot: SyncSnapshot | null;
 }
 
-export function usePlayer(api: ApiClient, roomId: string): PlayerBinding {
+export function usePlayer(api: ApiClient, roomId: string, options: { remote?: boolean } = {}): PlayerBinding {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [binding, setBinding] = useState<{ engine: SyncEngine; player: VideoPlayer } | null>(null);
   const [snapshot, setSnapshot] = useState<SyncSnapshot | null>(null);
@@ -21,7 +21,7 @@ export function usePlayer(api: ApiClient, roomId: string): PlayerBinding {
     const video = videoRef.current;
     if (!video) return;
     const player = new VideoPlayer(video);
-    const engine = new RoomSyncEngine(api, player);
+    const engine = new RoomSyncEngine(api, player, { remote: !!options.remote });
     const off = engine.onState(setSnapshot);
     engine.connect(roomId);
     setBinding({ engine, player });
@@ -46,4 +46,14 @@ export function usePlayerTick(player: VideoPlayer | null): number {
     });
   }, [player]);
   return tick;
+}
+
+/** Re-renders every `ms` while `on` (remote mode has no player time events). */
+export function useTicker(on: boolean, ms = 500): void {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!on) return;
+    const timer = setInterval(() => setTick((t) => t + 1), ms);
+    return () => clearInterval(timer);
+  }, [on, ms]);
 }

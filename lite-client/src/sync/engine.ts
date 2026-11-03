@@ -4,7 +4,7 @@
 // Invariants (spec §5.1/§5.3): only UI gestures send commands; player events
 // never do. Our own echoes are stored but not re-applied to the player.
 import { ApiError, type ApiClient } from '../api/http';
-import { playNext, playPrevious } from '../api/endpoints';
+import { getPlayback, playNext, playPrevious } from '../api/endpoints';
 import type { Playback } from '../api/types';
 import type { VideoPlayer } from '../player/player';
 import { pickSource, type PlayableSource } from '../player/source';
@@ -25,6 +25,7 @@ import {
   type UpdateKind,
 } from './protocol';
 import {
+  expectedPosition,
   hasSource,
   isStale,
   needsCorrection,
@@ -39,6 +40,14 @@ import {
 import type { SyncEngine, SyncSnapshot } from './types';
 
 const INIT_TIMEOUT_MS = 20_000;
+/**
+ * Hidden longer than this (Telegram minimised, phone locked): the socket may
+ * be a zombie that still reports OPEN, so reconnect on return. A reconnect is
+ * cheap: observing re-sends the full state.
+ */
+export const BACKGROUND_RECONNECT_MS = 15_000;
+/** Past the sync cooldown, so the first frames have played before measuring drift. */
+const SETTLE_DELAY_MS = SYNC_COOLDOWN_MS + 200;
 const MAX_ERROR_RELOADS = 3;
 /** "Completed" tolerance for play-from-end (custom_video_player.dart:1769). */
 const ENDED_TOLERANCE_S = 0.5;
@@ -71,6 +80,8 @@ export interface RoomSyncEngineOptions {
   origin?: string;
   /** Disables auto-seek and the 2 s loop (official "free mode"); default false. */
   freeMode?: boolean;
+  /** Start in remote mode (no local playback). */
+  remote?: boolean;
 }
 
 export class RoomSyncEngine implements SyncEngine {
@@ -89,6 +100,7 @@ export class RoomSyncEngine implements SyncEngine {
     error: null,
     navigating: false,
     accessLost: null,
+    remote: false,
   };
 
   // sync state
@@ -113,6 +125,13 @@ export class RoomSyncEngine implements SyncEngine {
   private readonly origin: string;
   private readonly freeMode: boolean;
   private readonly unsubscribePlayer: () => void;
+  private hiddenAt = 0;
+  /** A forced seek+play is waiting for playback to actually start (see settle()). */
+  private settlePending = false;
+  private settleTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Bumped per openSocket so an older, slower ticket request can't open a second socket. */
+  private connectGen = 0;
+  private lifecycleBound = false;
 
   constructor(
     private readonly api: ApiClient,
@@ -121,6 +140,10 @@ export class RoomSyncEngine implements SyncEngine {
   ) {
     this.origin = options.origin || location.origin;
     this.freeMode = !!options.freeMode;
+    if (options.remote) {
+      this.snap = { ...this.snap, remote: true };
+      player.setPreload('metadata');
+    }
     this.clock = new ServerClock((sent) =>
       withTimeout(
         api.request('GET', '/api/public/time', undefined, { auth: false, query: { clientSentAtNanos: sent } }),
@@ -132,6 +155,7 @@ export class RoomSyncEngine implements SyncEngine {
       if (event.type === 'mutedautoplay') this.update({ autoMuted: true, needsGesture: false });
       else if (event.type === 'autoplayblocked') this.update({ needsGesture: true });
       else if (event.type === 'error') this.onPlayerError(event.message || 'Playback error');
+      else if (event.type === 'playing') this.settle();
     });
   }
 
@@ -141,6 +165,7 @@ export class RoomSyncEngine implements SyncEngine {
     this.roomId = roomId;
     this.clock.start();
     if (this.loopTimer === null) this.loopTimer = setInterval(() => this.retryLoop(), SYNC_LOOP_MS);
+    this.bindLifecycle(true);
     void this.openSocket();
   }
 
@@ -190,11 +215,41 @@ export class RoomSyncEngine implements SyncEngine {
   unlock(): void {
     this.restoreAudio();
     this.update({ needsGesture: false });
+    // Not loaded yet (iOS may hold back loading until a gesture): start the
+    // element inside this tap; the forced sync after metadata fixes position.
+    if (!this.loadedReady && this.cur && this.cur.playing && this.player.currentSource) {
+      void this.player.play();
+      return;
+    }
     if (this.cur) void this.performSync(this.cur, true);
+  }
+
+  setRemote(on: boolean): void {
+    if (on === this.snap.remote) return;
+    this.update({ remote: on, needsGesture: false });
+    if (on) {
+      this.settlePending = false;
+      this.player.setPreload('metadata');
+      this.player.pause();
+      return;
+    }
+    // Called from a tap: playing here is allowed, with sound.
+    this.player.setPreload('auto');
+    this.restoreAudio();
+    if (this.cur) void this.performSync(this.cur, true);
+  }
+
+  position(): number {
+    if (!this.snap.remote) return this.player.currentTime;
+    const cur = this.cur;
+    if (!cur) return 0;
+    return expectedPosition(cur, this.clock.now(), this.player.duration).position;
   }
 
   dispose(): void {
     this.disposed = true;
+    this.bindLifecycle(false);
+    if (this.settleTimer !== null) clearTimeout(this.settleTimer);
     this.clock.stop();
     if (this.loopTimer !== null) clearInterval(this.loopTimer);
     this.loopTimer = null;
@@ -208,7 +263,13 @@ export class RoomSyncEngine implements SyncEngine {
 
   private async apply(s: SyncState, opts: { forceSeek?: boolean; skipPlayerSync?: boolean } = {}): Promise<void> {
     if (isStale(s, this.cur)) return;
-    const sourceChanged = !!this.cur && !sameSource(this.cur, s);
+    const prev = this.cur;
+    const sourceChanged = !!prev && !sameSource(prev, s);
+    // Deviation from the official client: seek precisely (0.2 s) while the room
+    // is paused, when it starts playing and when its speed changes. These are
+    // jumps anyway, and a sub-1.2 s offset left there would otherwise carry
+    // into the whole film.
+    const precise = !s.playing || (!!prev && (!prev.playing || prev.speed !== s.speed));
     this.cur = s;
     if (!hasSource(s)) {
       this.unload();
@@ -224,7 +285,7 @@ export class RoomSyncEngine implements SyncEngine {
       await this.load(res.source);
       return;
     }
-    await this.performSync(s, !!opts.forceSeek || sourceChanged);
+    await this.performSync(s, !!opts.forceSeek || sourceChanged || precise);
   }
 
   /** `playback` resource: player-ready source, no timing (merge keeps current timing). */
@@ -298,6 +359,10 @@ export class RoomSyncEngine implements SyncEngine {
   /** One sync pass: rate → pause → seek → play, then an 800 ms cooldown. */
   private async performSync(s: SyncState, forceSeek = false): Promise<void> {
     if (!this.loadedReady || !this.player.ready) return;
+    if (this.snap.remote) {
+      this.player.pause(); // remote mode: the element only provides the duration
+      return;
+    }
     const gen = ++this.syncGen;
     const isCurrent = () => gen === this.syncGen && this.cur === s && !this.disposed;
     this.syncing = true;
@@ -311,7 +376,12 @@ export class RoomSyncEngine implements SyncEngine {
       if (plan.pause) this.player.pause();
       if (plan.seek !== null) this.player.seek(plan.seek);
       if (!isCurrent()) return;
-      if (plan.play) await this.player.play(); // muted autoplay fallback lives in the player
+      if (plan.play) {
+        // Seek + start (join, media change, resync): the time spent buffering
+        // before frames move is lost, so check once more after it starts.
+        if (forceSeek && plan.seek !== null) this.settlePending = true;
+        await this.player.play(); // muted autoplay fallback lives in the player
+      }
     } finally {
       setTimeout(() => {
         if (gen === this.syncGen) this.syncing = false;
@@ -319,7 +389,28 @@ export class RoomSyncEngine implements SyncEngine {
     }
   }
 
+  /**
+   * Deviation from the official client: a forced seek+play lands late by the
+   * buffering time (0.3–0.8 s on phones), which the 1.2 s loop never fixes.
+   * Once playback really starts, re-sync at the manual 0.2 s threshold — once,
+   * so a slow source can't loop.
+   */
+  private settle(): void {
+    if (!this.settlePending || this.snap.remote) return;
+    this.settlePending = false;
+    if (this.settleTimer !== null) clearTimeout(this.settleTimer);
+    this.settleTimer = setTimeout(() => {
+      this.settleTimer = null;
+      const cur = this.cur;
+      if (this.disposed || this.syncing || !cur || !cur.playing || this.player.paused || this.player.buffering) return;
+      void this.performSync(cur, true).then(() => {
+        this.settlePending = false; // this pass's own seek+play doesn't settle again
+      });
+    }, SETTLE_DELAY_MS);
+  }
+
   private retryLoop(): void {
+    if (this.snap.remote) return;
     if (this.syncing || this.freeMode || !this.cur || !this.loadedReady || !this.player.ready) return;
     if (!this.resolvedFor(this.cur)) return;
     if (needsCorrection(this.cur, this.playerView(), this.clock.now(), { live: this.snap.live })) {
@@ -340,27 +431,56 @@ export class RoomSyncEngine implements SyncEngine {
     const source = this.player.currentSource;
     if (source && this.errorReloads < MAX_ERROR_RELOADS) {
       this.errorReloads++;
-      void this.load(source); // reload, then forced sync once ready
+      void this.reloadFresh(source); // then a forced sync once ready
       return;
     }
     this.update({ error: message });
+  }
+
+  /**
+   * Reload after a playback error with a freshly issued URL: proxied URLs are
+   * signed for 30 min, so after that a seek in a long film gets refused, and
+   * reloading the same URL would fail again. Falls back to the old URL.
+   */
+  private async reloadFresh(source: PlayableSource): Promise<void> {
+    const gen = this.loadGen;
+    let next = source;
+    try {
+      const res = await getPlayback(this.api, this.roomId);
+      const fresh = res.playback ? pickSource(res.playback) : null;
+      if (fresh && fresh.key === source.key) {
+        next = fresh;
+        if (this.resolved && res.playback) this.resolved = { ...this.resolved, source: fresh };
+      }
+    } catch {
+      // keep the old URL
+    }
+    if (this.disposed || gen !== this.loadGen) return; // something else loaded meanwhile
+    await this.load(next);
   }
 
   // ---------------- local gestures (spec §5) ----------------
 
   private userAction(kind: UpdateKind, arg?: number): void {
     const cur = this.cur;
-    if (!cur || !this.loadedReady || !this.player.ready) return;
+    const remote = this.snap.remote;
+    // Remote mode needs no loaded player: positions come from the room clock.
+    if (!cur || (!remote && (!this.loadedReady || !this.player.ready))) return;
+    if (remote && !hasSource(cur)) return;
     const live = this.snap.live;
     if (live && kind === 'seek') return;
-    this.restoreAudio();
+    if (!remote) this.restoreAudio();
     this.errorReloads = 0;
     const duration = this.player.duration;
     const clamp = (t: number) => Math.max(0, duration > 0 ? Math.min(t, duration) : t);
+    const here = this.position();
 
-    // 1) apply locally first
+    // 1) apply locally first (remote mode: nothing plays here)
     let playing = cur.playing;
-    if (kind === 'play') {
+    if (remote) {
+      if (kind === 'play') playing = true;
+      else if (kind === 'pause') playing = false;
+    } else if (kind === 'play') {
       if (duration > 0 && this.player.currentTime >= duration - ENDED_TOLERANCE_S) this.player.seek(0);
       void this.player.play();
       playing = true;
@@ -379,7 +499,9 @@ export class RoomSyncEngine implements SyncEngine {
     // 2) command
     const opId = uuidv4();
     const t = Math.round(this.clock.now());
-    const position = clamp(kind === 'seek' ? arg || 0 : this.player.currentTime);
+    let position = clamp(kind === 'seek' ? arg || 0 : here);
+    // Play from the end restarts (the local branch seeks the player to 0).
+    if (kind === 'play' && duration > 0 && here >= duration - ENDED_TOLERANCE_S) position = 0;
     const message = playbackUpdateMessage({
       kind,
       playing,
@@ -398,7 +520,7 @@ export class RoomSyncEngine implements SyncEngine {
       ...cur,
       playing,
       position: live ? cur.position : position,
-      speed: kind === 'speed' && arg ? arg : this.player.playbackRate,
+      speed: kind === 'speed' && arg ? arg : remote ? cur.speed : this.player.playbackRate,
       generatedAtMs: t,
       opId,
     };
@@ -453,10 +575,48 @@ export class RoomSyncEngine implements SyncEngine {
     }
   }
 
+  // ---------------- app lifecycle (phones) ----------------
+
+  private readonly onVisibility = (): void => {
+    if (typeof document === 'undefined') return;
+    if (document.visibilityState === 'hidden') {
+      this.hiddenAt = Date.now();
+      return;
+    }
+    const away = this.hiddenAt ? Date.now() - this.hiddenAt : 0;
+    this.hiddenAt = 0;
+    this.resume(away >= BACKGROUND_RECONNECT_MS);
+  };
+
+  private readonly onOnline = (): void => this.resume(false);
+
+  /** Back in the foreground / online: reconnect now instead of waiting out the backoff. */
+  private resume(forceReconnect: boolean): void {
+    if (this.disposed || this.lost) return;
+    void this.clock.sample();
+    const open = !!this.ws && this.ws.readyState === 1;
+    if (open && !forceReconnect) {
+      if (this.cur) void this.performSync(this.cur);
+      return;
+    }
+    this.attempts = 0;
+    void this.openSocket();
+  }
+
+  private bindLifecycle(on: boolean): void {
+    if (on === this.lifecycleBound || typeof document === 'undefined' || typeof window === 'undefined') return;
+    this.lifecycleBound = on;
+    const method = on ? 'addEventListener' : 'removeEventListener';
+    document[method]('visibilitychange', this.onVisibility);
+    window[method]('online', this.onOnline);
+    window[method]('pageshow', this.onVisibility);
+  }
+
   // ---------------- connection (spec §1) ----------------
 
   private async openSocket(): Promise<void> {
     if (this.disposed || this.lost) return;
+    const gen = ++this.connectGen;
     this.clearReconnect();
     this.closeSocket();
     this.update({ connection: this.attempts > 0 ? 'reconnecting' : 'connecting' });
@@ -470,6 +630,7 @@ export class RoomSyncEngine implements SyncEngine {
       if (!res.ticket) throw new Error('no ticket');
       ticket = res.ticket;
     } catch (error) {
+      if (gen !== this.connectGen) return;
       // 403: not a member any more (e.g. TV unpaired); 404: room gone. 401 here
       // means the refresh already failed and the client signed out.
       if (error instanceof ApiError && (error.status === 401 || error.status === 403 || error.status === 404)) {
@@ -479,7 +640,7 @@ export class RoomSyncEngine implements SyncEngine {
       this.scheduleReconnect();
       return;
     }
-    if (this.disposed) return;
+    if (this.disposed || gen !== this.connectGen) return;
     let ws: WebSocket;
     try {
       ws = new WebSocket(wsUrl(this.origin, this.roomId, ticket));

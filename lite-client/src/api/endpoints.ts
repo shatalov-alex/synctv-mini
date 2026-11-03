@@ -53,6 +53,11 @@ export function createRoom(api: ApiClient, name: string): Promise<Room> {
   return api.request('POST', '/api/rooms', { name });
 }
 
+/** Creator only; members are disconnected and the room disappears from every list. */
+export function deleteRoom(api: ApiClient, roomId: string): Promise<unknown> {
+  return api.request('DELETE', `/api/rooms/${enc(roomId)}`);
+}
+
 export function getRoom(api: ApiClient, roomId: string): Promise<GetRoomResponse> {
   return api.request('GET', `/api/rooms/${enc(roomId)}`);
 }
@@ -66,9 +71,16 @@ export async function listRootMedia(api: ApiClient, roomId: string): Promise<Med
   return res.media || [];
 }
 
+/** PlaybackProxyMode.PLAYBACK_PROXY_MODE_ONLY (source_config.proto). */
+export const PROXY_MODE_ONLY = 2;
+
 export function addDirectUrlMedia(api: ApiClient, roomId: string, url: string, name?: string): Promise<Media> {
   const body: Record<string, unknown> = {
-    sourceConfig: { directUrl: { medias: [{ url }] } },
+    // Proxy through the server (PLAYBACK_PROXY_MODE_ONLY): many hosts hand out
+    // links bound to the IP that requested them or block some networks, so a
+    // viewer on another network (e.g. mobile data) gets refused when fetching
+    // directly. The server fetches for everyone, as the official client does.
+    sourceConfig: { directUrl: { medias: [{ url }], proxyMode: PROXY_MODE_ONLY } },
   };
   if (name) body.name = name;
   return api.request('POST', `/api/rooms/${enc(roomId)}/media`, body);

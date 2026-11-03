@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'preact/hooks';
 import { api } from '../auth';
-import { createRoom, listMyRooms } from '../api/endpoints';
+import { createRoom, deleteRoom, listMyRooms } from '../api/endpoints';
 import type { MyRoom, User } from '../api/types';
 import { errorMessage } from '../format';
 import { navigate, roomPath } from '../router';
+import { confirmAction } from '../telegram';
 
 // Auto-enter a lone room only on the first visit, not when coming back from it.
 let autoEnterDone = false;
@@ -32,6 +33,19 @@ export function Home({ me }: { me: User | null }) {
       (e) => setError(errorMessage(e)),
     );
   }, []);
+
+  const remove = async (room: { id?: string; name?: string }) => {
+    if (!room.id) return;
+    const ok = await confirmAction(`Delete “${room.name || 'this room'}”? Its playlist, invite links and paired TVs go with it.`);
+    if (!ok) return;
+    setError('');
+    try {
+      await deleteRoom(api, room.id);
+      setRooms((list) => (list ? list.filter((r) => !r.room || r.room.id !== room.id) : list));
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  };
 
   const create = async (event: Event) => {
     event.preventDefault();
@@ -62,6 +76,11 @@ export function Home({ me }: { me: User | null }) {
                   {r.room.name || r.room.id}
                 </button>
                 <span class="muted small">{r.room.memberCount || 0} 👤</span>
+                {me && me.id && r.room.createdBy === me.id && (
+                  <button class="ghost danger" onClick={() => remove(r.room!)} aria-label={`Delete ${r.room.name || 'room'}`}>
+                    Delete
+                  </button>
+                )}
               </li>
             ) : null,
           )}

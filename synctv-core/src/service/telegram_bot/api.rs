@@ -9,8 +9,8 @@ use std::time::Duration;
 use serde::{de::DeserializeOwned, Serialize};
 
 use super::types::{
-    AnswerCallbackQuery, ApiResponse, Empty, GetUpdates, MenuButtonWebApp, SendMessage,
-    SetChatMenuButton, Update, User, WebAppInfo,
+    AnswerCallbackQuery, ApiResponse, BotCommandInfo, BotCommandScope, Empty, GetUpdates,
+    MenuButtonWebApp, SendMessage, SetChatMenuButton, SetMyCommands, Update, User, WebAppInfo,
 };
 
 pub const DEFAULT_TELEGRAM_API_BASE_URL: &str = "https://api.telegram.org";
@@ -190,6 +190,48 @@ impl TelegramBotApi {
                 None,
             )
             .await?;
+        Ok(())
+    }
+
+    /// Register the commands Telegram suggests: `/start` for everyone, plus `/invite`
+    /// in the admin's private chat (`admin_chat_id` 0 = no admin scope).
+    pub async fn set_commands(&self, admin_chat_id: i64) -> Result<(), TelegramApiError> {
+        let start = BotCommandInfo {
+            command: "start",
+            description: "Open SyncTV",
+        };
+        let invite = BotCommandInfo {
+            command: "invite",
+            description: "Create an invite link for a room",
+        };
+        let _: bool = self
+            .call(
+                "setMyCommands",
+                &SetMyCommands {
+                    commands: &[start],
+                    scope: BotCommandScope::Default,
+                },
+                None,
+            )
+            .await?;
+        if admin_chat_id != 0 {
+            let start = BotCommandInfo {
+                command: "start",
+                description: "Open SyncTV",
+            };
+            let _: bool = self
+                .call(
+                    "setMyCommands",
+                    &SetMyCommands {
+                        commands: &[start, invite],
+                        scope: BotCommandScope::Chat {
+                            chat_id: admin_chat_id,
+                        },
+                    },
+                    None,
+                )
+                .await?;
+        }
         Ok(())
     }
 }
