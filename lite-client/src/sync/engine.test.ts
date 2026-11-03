@@ -443,3 +443,35 @@ describe('RoomSyncEngine precise sync while paused', () => {
     expect(player.calls).toEqual(['seek:0', 'play']);
   });
 });
+
+describe('RoomSyncEngine playback errors', () => {
+  it('reloads with a freshly signed URL (expired proxy signature)', async () => {
+    const { ws, player, api } = await setup();
+    const signed = (sig: string) => ({ ...playback, playbackInfos: { proxy: { medias: [{ url: `https://srv/stream?sig=${sig}` }] } } });
+    ws.push(playbackEvent(signed('old')));
+    ws.push(stateEvent(state()));
+    await flush();
+    const original = api.request;
+    (api as any).request = async (method: string, path: string) => {
+      if (path === '/api/rooms/room_1/playback') return { playback: signed('new') };
+      return original(method, path);
+    };
+    player.calls.length = 0;
+    player.emit('error');
+    await flush();
+    expect((player.currentSource as { url: string }).url).toBe('https://srv/stream?sig=new');
+    expect(player.calls[0]).toBe('load');
+  });
+
+  it('falls back to the old URL when the refresh fails', async () => {
+    const { ws, player } = await setup();
+    ws.push(playbackEvent(playback));
+    ws.push(stateEvent(state()));
+    await flush();
+    player.calls.length = 0;
+    player.emit('error'); // fakeApi answers {} for /playback
+    await flush();
+    expect((player.currentSource as { url: string }).url).toBe('https://x/a.mp4');
+    expect(player.calls[0]).toBe('load');
+  });
+});

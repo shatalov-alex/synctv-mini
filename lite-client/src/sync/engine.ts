@@ -4,7 +4,7 @@
 // Invariants (spec §5.1/§5.3): only UI gestures send commands; player events
 // never do. Our own echoes are stored but not re-applied to the player.
 import { ApiError, type ApiClient } from '../api/http';
-import { playNext, playPrevious } from '../api/endpoints';
+import { getPlayback, playNext, playPrevious } from '../api/endpoints';
 import type { Playback } from '../api/types';
 import type { VideoPlayer } from '../player/player';
 import { pickSource, type PlayableSource } from '../player/source';
@@ -396,10 +396,32 @@ export class RoomSyncEngine implements SyncEngine {
     const source = this.player.currentSource;
     if (source && this.errorReloads < MAX_ERROR_RELOADS) {
       this.errorReloads++;
-      void this.load(source); // reload, then forced sync once ready
+      void this.reloadFresh(source); // then a forced sync once ready
       return;
     }
     this.update({ error: message });
+  }
+
+  /**
+   * Reload after a playback error with a freshly issued URL: proxied URLs are
+   * signed for 30 min, so after that a seek in a long film gets refused, and
+   * reloading the same URL would fail again. Falls back to the old URL.
+   */
+  private async reloadFresh(source: PlayableSource): Promise<void> {
+    const gen = this.loadGen;
+    let next = source;
+    try {
+      const res = await getPlayback(this.api, this.roomId);
+      const fresh = res.playback ? pickSource(res.playback) : null;
+      if (fresh && fresh.key === source.key) {
+        next = fresh;
+        if (this.resolved && res.playback) this.resolved = { ...this.resolved, source: fresh };
+      }
+    } catch {
+      // keep the old URL
+    }
+    if (this.disposed || gen !== this.loadGen) return; // something else loaded meanwhile
+    await this.load(next);
   }
 
   // ---------------- local gestures (spec §5) ----------------

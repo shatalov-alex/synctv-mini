@@ -321,7 +321,8 @@ function mediaErrorMessage(code: number): string {
     case 3:
       return 'The video could not be decoded';
     case 4:
-      return 'This video format or URL is not supported here';
+      // Browsers also report a refused request (403, expired link) this way.
+      return 'This video could not be opened: the format is not supported or the link refused this device';
     default:
       return 'Playback error';
   }
