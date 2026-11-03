@@ -8,8 +8,10 @@ import { navigate, roomPath } from '../router';
 // Auto-enter a lone room only on the first visit, not when coming back from it.
 let autoEnterDone = false;
 
+/** UserRole ROOT = 1, ADMIN = 2. The HTTP API serializes enums as integers; accept names too. */
 export function isAdmin(me: User | null): boolean {
-  return !!me && (me.role === 'USER_ROLE_ADMIN' || me.role === 'USER_ROLE_ROOT');
+  const role = me && (me.role as unknown);
+  return role === 1 || role === 2 || role === 'USER_ROLE_ROOT' || role === 'USER_ROLE_ADMIN';
 }
 
 export function Home({ me }: { me: User | null }) {
