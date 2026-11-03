@@ -1,14 +1,15 @@
 //! Room invite links: managed by the room creator, redeemed from the Telegram Mini App.
 
 use synctv_common::ExecutionControl;
-use synctv_core::{models::UserId, repository::RoomInvite};
+use synctv_core::{
+    models::UserId,
+    repository::RoomInvite,
+    service::{DEFAULT_INVITE_MAX_USES, DEFAULT_INVITE_TTL_SECS},
+};
 use synctv_proto::client as proto;
 
 use super::{auth::login_outcome_to_proto, ClientApiImpl};
 use crate::impls::ApiError;
-
-const DEFAULT_INVITE_TTL_SECS: i64 = 24 * 60 * 60;
-const DEFAULT_INVITE_MAX_USES: i32 = 1;
 
 fn invite_to_proto(invite: &RoomInvite) -> proto::RoomInvite {
     proto::RoomInvite {

@@ -18,7 +18,7 @@ use crate::{
     Error, Result,
 };
 
-use super::RoomService;
+use super::{admission_notice::AdmissionNotice, RoomService};
 
 /// Unambiguous code alphabet: A-Z and 2-9 without O, 0, I, 1 and L (31 symbols).
 pub const TV_PAIRING_CODE_ALPHABET: &[u8] = b"ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -197,7 +197,14 @@ impl RoomService {
             .admit_tv(pairing_id, room_id, room.created_by, claimer_id)
             .await
         {
-            Ok(tv_user_id) => Ok(tv_user_id),
+            Ok(tv_user_id) => {
+                self.notify_admission(AdmissionNotice::TvPaired {
+                    room_id,
+                    tv_user_id,
+                    claimer_id,
+                });
+                Ok(tv_user_id)
+            }
             Err(error) => {
                 if let Err(release_error) = pairings.release(pairing_id).await {
                     tracing::warn!(
