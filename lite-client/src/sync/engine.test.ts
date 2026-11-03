@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('./profile', () => ({ buildClientProfile: () => ({ profileVersion: 2 }) }));
 
-import type { ApiClient } from '../api/http';
+import { ApiError, type ApiClient } from '../api/http';
 import type { VideoPlayer } from '../player/player';
 import { RoomSyncEngine } from './engine';
 
@@ -81,9 +81,13 @@ function fakeApi() {
   let ticket = 0;
   const api = {
     requests,
+    ticketError: null as Error | null,
     request: async (method: string, path: string) => {
       requests.push({ method, path });
-      if (path === '/api/tickets') return { ticket: `t${++ticket}` };
+      if (path === '/api/tickets') {
+        if (api.ticketError) throw api.ticketError;
+        return { ticket: `t${++ticket}` };
+      }
       if (path === '/api/public/time') throw new Error('offline'); // offset stays 0
       return {};
     },
@@ -282,5 +286,36 @@ describe('RoomSyncEngine', () => {
     const { ws } = await setup();
     await vi.advanceTimersByTimeAsync(25_000);
     expect(ws.sent.filter((m) => m.heartbeat)).toEqual([{ heartbeat: { timestamp: String(T0 + 25_000) } }]);
+  });
+
+  it('kicked with a membership-revoked termination: access lost, no reconnect', async () => {
+    const { ws, engine } = await setup();
+    ws.push({ termination: { message: 'Removed from room', code: 4 } });
+    ws.close();
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(engine.snapshot().accessLost).toBe('Removed from room');
+    expect(engine.snapshot().connection).toBe('closed');
+    expect(FakeWS.all).toHaveLength(1);
+  });
+
+  it('a 403 ticket on reconnect (no longer a member) is access loss', async () => {
+    const { ws, api, engine } = await setup();
+    api.ticketError = new ApiError(403, 'Not a member of this room. Join the room first.');
+    ws.close();
+    await vi.advanceTimersByTimeAsync(2000);
+    await flush();
+    expect(engine.snapshot().accessLost).toMatch(/Not a member/);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(api.requests.filter((r) => r.path === '/api/tickets')).toHaveLength(2);
+  });
+
+  it('network errors on the ticket keep retrying', async () => {
+    const { ws, api, engine } = await setup();
+    api.ticketError = new Error('offline');
+    ws.close();
+    await vi.advanceTimersByTimeAsync(2000 + 4000);
+    await flush();
+    expect(engine.snapshot().accessLost).toBeNull();
+    expect(api.requests.filter((r) => r.path === '/api/tickets').length).toBeGreaterThanOrEqual(3);
   });
 });

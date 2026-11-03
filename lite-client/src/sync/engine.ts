@@ -3,7 +3,7 @@
 //
 // Invariants (spec §5.1/§5.3): only UI gestures send commands; player events
 // never do. Our own echoes are stored but not re-applied to the player.
-import type { ApiClient } from '../api/http';
+import { ApiError, type ApiClient } from '../api/http';
 import { playNext, playPrevious } from '../api/endpoints';
 import type { Playback } from '../api/types';
 import type { VideoPlayer } from '../player/player';
@@ -20,6 +20,7 @@ import {
   observeMessages,
   parseIncoming,
   playbackUpdateMessage,
+  terminationLosesAccess,
   wsUrl,
   type UpdateKind,
 } from './protocol';
@@ -75,6 +76,8 @@ export interface RoomSyncEngineOptions {
 export class RoomSyncEngine implements SyncEngine {
   private roomId = '';
   private disposed = false;
+  /** Access to the room is gone: never reconnect. */
+  private lost = false;
   private listeners: Array<(s: SyncSnapshot) => void> = [];
   private snap: SyncSnapshot = {
     connection: 'idle',
@@ -85,6 +88,7 @@ export class RoomSyncEngine implements SyncEngine {
     needsGesture: false,
     error: null,
     navigating: false,
+    accessLost: null,
   };
 
   // sync state
@@ -444,14 +448,15 @@ export class RoomSyncEngine implements SyncEngine {
       }
       if (msg.code !== CONFLICT_CODE) this.update({ error: msg.message });
     } else if (msg.kind === 'termination') {
-      if (msg.message) this.update({ error: msg.message });
+      if (terminationLosesAccess(msg.code)) this.loseAccess(msg.message || 'You no longer have access to this room.');
+      else if (msg.message) this.update({ error: msg.message });
     }
   }
 
   // ---------------- connection (spec §1) ----------------
 
   private async openSocket(): Promise<void> {
-    if (this.disposed) return;
+    if (this.disposed || this.lost) return;
     this.clearReconnect();
     this.closeSocket();
     this.update({ connection: this.attempts > 0 ? 'reconnecting' : 'connecting' });
@@ -464,7 +469,13 @@ export class RoomSyncEngine implements SyncEngine {
       );
       if (!res.ticket) throw new Error('no ticket');
       ticket = res.ticket;
-    } catch {
+    } catch (error) {
+      // 403: not a member any more (e.g. TV unpaired); 404: room gone. 401 here
+      // means the refresh already failed and the client signed out.
+      if (error instanceof ApiError && (error.status === 401 || error.status === 403 || error.status === 404)) {
+        this.loseAccess(error.message);
+        return;
+      }
       this.scheduleReconnect();
       return;
     }
@@ -505,6 +516,14 @@ export class RoomSyncEngine implements SyncEngine {
     };
   }
 
+  private loseAccess(message: string): void {
+    if (this.snap.accessLost) return;
+    this.lost = true;
+    this.clearReconnect();
+    this.closeSocket();
+    this.update({ accessLost: message, connection: 'closed' });
+  }
+
   private send(message: unknown): boolean {
     const ws = this.ws;
     if (!ws || ws.readyState !== 1) {
@@ -521,7 +540,7 @@ export class RoomSyncEngine implements SyncEngine {
   }
 
   private scheduleReconnect(): void {
-    if (this.disposed || this.reconnectTimer !== null) return;
+    if (this.disposed || this.lost || this.reconnectTimer !== null) return;
     if (this.ws && (this.ws.readyState === 0 || this.ws.readyState === 1)) return;
     const next = nextReconnect(this.attempts);
     this.attempts = next.attempts;
