@@ -328,7 +328,18 @@ impl RoomService {
             realtime_outbox: options.realtime_outbox,
             room_file_storage_service: options.room_file_storage_service,
             consistency: ConsistencyCoordinator::new(version_fence),
+            admission_notifier: None,
         }
+    }
+
+    /// Report invite joins and TV pairings to `notifier` (best effort, never blocking).
+    #[must_use]
+    pub fn with_admission_notifier(
+        mut self,
+        notifier: Arc<dyn super::RoomAdmissionNotifier>,
+    ) -> Self {
+        self.admission_notifier = Some(notifier);
+        self
     }
 
     #[cfg(any(test, feature = "test-support"))]

@@ -262,6 +262,32 @@ impl UserService {
         .await
     }
 
+    /// The local account the configured Telegram admin acts as in the bot: the account their
+    /// Telegram id is mapped to (set by Mini App sign-in) if it is an active admin, otherwise
+    /// `admin_username` if that is an active admin. `None` if neither qualifies.
+    pub async fn find_telegram_admin_user(
+        &self,
+        admin_telegram_user_id: i64,
+        admin_username: &str,
+    ) -> Result<Option<User>> {
+        let usable =
+            |user: &User| user.is_admin_or_above() && Self::validate_user_access(user).is_ok();
+        let identities = TelegramIdentityRepository::new(self.repository.pool().clone());
+        if let Some(user_id) = identities.find_user_id(admin_telegram_user_id).await? {
+            if let Some(user) = self.repository.get_by_id(&user_id).await?.filter(usable) {
+                return Ok(Some(user));
+            }
+        }
+        if admin_username.is_empty() {
+            return Ok(None);
+        }
+        Ok(self
+            .repository
+            .get_by_username(admin_username)
+            .await?
+            .filter(usable))
+    }
+
     /// Create the account a newly paired TV signs in as: `tv_<id>`, plain user role, no
     /// password or email, so tokens issued through pairing are its only way in.
     pub async fn create_tv_user(&self) -> Result<User> {

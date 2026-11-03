@@ -8637,6 +8637,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "async_singleflight",
+ "axum",
  "backon",
  "base64 0.23.1",
  "bytes",

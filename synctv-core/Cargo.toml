@@ -146,6 +146,7 @@ tls-native-roots = [
 workspace = true
 
 [dev-dependencies]
+axum.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
 criterion.workspace = true
 rand.workspace = true

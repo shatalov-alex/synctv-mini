@@ -49,6 +49,7 @@ pub(crate) mod slice_cache_management;
 mod source_config;
 pub(crate) mod stun_server;
 pub(crate) mod system_stats;
+pub mod telegram_bot;
 pub(crate) mod time_partition_manager;
 pub(crate) mod user;
 pub(crate) mod user_notification;
@@ -199,7 +200,10 @@ pub use review::{
     UserRegistrationReviewRecord,
 };
 pub(crate) use room::soft_delete_room_and_cleanup_in_tx;
-pub use room::{invite_token_hash, INVITED_GUEST_PERMISSIONS};
+pub use room::{
+    invite_token_hash, RoomAdmissionEvent, RoomAdmissionNotifier, DEFAULT_INVITE_MAX_USES,
+    DEFAULT_INVITE_TTL_SECS, INVITED_GUEST_PERMISSIONS,
+};
 pub use room::{
     local_room_opaque_password_login_session_store,
     local_room_opaque_password_registration_session_store,

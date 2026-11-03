@@ -10,7 +10,7 @@ use crate::{
     Error, Result,
 };
 
-use super::{AddMemberWithOutboxRequest, RoomService};
+use super::{admission_notice::AdmissionNotice, AddMemberWithOutboxRequest, RoomService};
 
 /// What an invited guest may do: watch, chat, and fully control playback (play/pause, seek,
 /// speed, next/previous). Everything else a room admin could do is removed.
@@ -24,6 +24,11 @@ pub const INVITED_GUEST_PERMISSIONS: u64 = RoomAdminPermissionBits::SEND_CHAT_ME
     | RoomAdminPermissionBits::VIEW_PLAYBACK_HISTORY
     | RoomAdminPermissionBits::CONTROL_PLAYBACK_STATE
     | RoomAdminPermissionBits::NAVIGATE_PLAYBACK;
+
+/// Lifetime of an invite link when the creator does not choose one.
+pub const DEFAULT_INVITE_TTL_SECS: i64 = 24 * 60 * 60;
+/// Use limit of an invite link when the creator does not choose one.
+pub const DEFAULT_INVITE_MAX_USES: i32 = 1;
 
 const INVITED_GUEST_REMOVED: u64 = RoomAdminPermissionBits::DEFAULT & !INVITED_GUEST_PERMISSIONS;
 
@@ -80,6 +85,23 @@ impl RoomService {
         Ok((invite, token))
     }
 
+    /// Create an invite link with the default lifetime and use limit
+    /// ([`DEFAULT_INVITE_TTL_SECS`], [`DEFAULT_INVITE_MAX_USES`]).
+    pub async fn create_default_room_invite(
+        &self,
+        room_id: RoomId,
+        actor_id: UserId,
+    ) -> Result<(RoomInvite, String)> {
+        let expires_at = self.clock.now() + chrono::Duration::seconds(DEFAULT_INVITE_TTL_SECS);
+        self.create_room_invite(
+            room_id,
+            actor_id,
+            Some(expires_at),
+            Some(DEFAULT_INVITE_MAX_USES),
+        )
+        .await
+    }
+
     pub async fn list_room_invites(
         &self,
         room_id: RoomId,
@@ -130,6 +152,7 @@ impl RoomService {
             ));
         }
 
+        let display_name_for_notice = display_name.clone();
         if let Err(error) = self
             .admit_restricted_guest(
                 invite.room_id,
@@ -142,6 +165,11 @@ impl RoomService {
             Self::release_invite_use(&invites, invite.id).await;
             return Err(error);
         }
+        self.notify_admission(AdmissionNotice::InviteRedeemed {
+            room_id: invite.room_id,
+            user_id: target_user_id,
+            display_name: display_name_for_notice,
+        });
         Ok(true)
     }
 

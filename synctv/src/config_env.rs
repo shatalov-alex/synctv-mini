@@ -669,6 +669,18 @@ pub(crate) fn apply_env_overrides_with(
         "SYNCTV_TELEGRAM_INIT_DATA_MAX_AGE_SECS",
         &mut config.telegram.init_data_max_age_secs,
     )?;
+    env_override_str(
+        "SYNCTV_TELEGRAM_WEB_APP_URL",
+        &mut config.telegram.web_app_url,
+    );
+    env_override_bool(
+        "SYNCTV_TELEGRAM_BOT_POLLING_ENABLED",
+        &mut config.telegram.bot_polling_enabled,
+    )?;
+    env_override_str(
+        "SYNCTV_TELEGRAM_API_BASE_URL",
+        &mut config.telegram.api_base_url,
+    );
 
     env_override_str("SYNCTV_JWT_SECRET", &mut config.jwt.secret);
     env_override_str_file(
