@@ -653,6 +653,21 @@ bootstrap:
   # root_password: ""
   # root_password_file: "/run/secrets/bootstrap_root_password"
 
+telegram:
+  # Telegram Mini App sign-in. Disabled while bot_token is empty or admin_user_id is 0.
+  # Environment variables:
+  #   SYNCTV_TELEGRAM_BOT_TOKEN / SYNCTV_TELEGRAM_BOT_TOKEN_FILE
+  #   SYNCTV_TELEGRAM_ADMIN_USER_ID
+  #   SYNCTV_TELEGRAM_ADMIN_USERNAME
+  #   SYNCTV_TELEGRAM_INIT_DATA_MAX_AGE_SECS
+  bot_token: ""
+  # Numeric Telegram user id allowed to sign in as admin_username (POST /api/auth/telegram).
+  admin_user_id: 0
+  # Local admin/root account the Telegram admin signs in as. Empty = bootstrap.root_username.
+  admin_username: ""
+  # Reject Mini App launch data older than this many seconds.
+  init_data_max_age_secs: 3600
+
   # ============================================================================
   # Cluster Configuration
   # ============================================================================

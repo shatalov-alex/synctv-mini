@@ -10,8 +10,8 @@ use synctv_proto::client::{
     ConfirmEmailLoginRequest, ConfirmEmailRegistrationRequest, CreateGuestTokenRequest,
     CreateGuestTokenResponse, FinishMfaPasskeyRequest, FinishOpaqueLoginRequest,
     FinishOpaqueRegistrationRequest, FinishPasskeyLoginRequest, FinishPasskeyRegistrationRequest,
-    LoginResponse, LoginWithDirectPasswordRequest, LogoutResponse, RefreshTokenRequest,
-    RefreshTokenResponse, RegisterResponse, RegisterWithDirectPasswordRequest,
+    LoginResponse, LoginWithDirectPasswordRequest, LoginWithTelegramRequest, LogoutResponse,
+    RefreshTokenRequest, RefreshTokenResponse, RegisterResponse, RegisterWithDirectPasswordRequest,
     RequestEmailLoginRequest, RequestEmailLoginResponse, RequestEmailRegistrationRequest,
     RequestEmailRegistrationResponse, RequestMfaEmailCodeRequest, RequestMfaEmailCodeResponse,
     StartLoginRequest, StartLoginResponse, StartMfaPasskeyRequest, StartMfaPasskeyResponse,
@@ -226,6 +226,49 @@ pub async fn login_with_direct_password(
                 let req = parse_auth_json::<LoginWithDirectPasswordRequest>(request).await?;
                 client_api
                     .login_with_direct_password_with_control(req, client_ip, Some(&request_control))
+                    .await
+            },
+        )
+        .await
+        .map_err(super::error::map_api_error)?;
+
+    Ok(Json(response))
+}
+
+/// Sign in from a Telegram Mini App launch.
+#[cfg_attr(
+    feature = "openapi",
+    utoipa::path(
+        post,
+        path = "/api/auth/telegram",
+        tag = "Auth",
+        request_body = LoginWithTelegramRequest,
+        responses(
+            (status = 200, description = "Telegram login succeeded", body = LoginResponse),
+            (status = 400, description = "Invalid request", body = crate::openapi::GoogleRpcStatusSchema),
+            (status = 401, description = "Invalid or expired Telegram data, or not the configured admin", body = crate::openapi::GoogleRpcStatusSchema),
+            (status = 404, description = "Telegram login is not enabled", body = crate::openapi::GoogleRpcStatusSchema),
+            (status = 413, description = "Request body exceeds the 64 KB limit", body = crate::openapi::GoogleRpcStatusSchema),
+            (status = 429, description = "Rate limited", body = crate::openapi::GoogleRpcStatusSchema)
+        )
+    )
+)]
+pub async fn login_with_telegram(
+    State(state): State<AppState>,
+    request: Request,
+) -> AppResult<Json<LoginResponse>> {
+    let (request_meta, request) = extract_auth_request(&state, request).await?;
+    let client_ip = request_meta.client_ip;
+    let executor = state.shared_api_runtime.client_api.clone();
+    let client_api = state.shared_api_runtime.client_api.clone();
+    let response = executor
+        .execute_public_endpoint_with_control(
+            &request_meta,
+            EndpointRateLimitCategory::Auth,
+            move |request_control| async move {
+                let req = parse_auth_json::<LoginWithTelegramRequest>(request).await?;
+                client_api
+                    .login_with_telegram_with_control(req, client_ip, Some(&request_control))
                     .await
             },
         )

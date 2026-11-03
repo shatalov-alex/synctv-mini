@@ -675,6 +675,16 @@ pub fn api_runtime_settings(config: &AppConfig) -> ApiRuntimeSettings {
                 .ws_message_rate_limit_per_second,
         },
         server_state: server_state_runtime_params(config),
+        telegram: synctv_api::TelegramAuthSettings {
+            bot_token: config.telegram.bot_token.clone(),
+            admin_user_id: config.telegram.admin_user_id,
+            admin_username: if config.telegram.admin_username.is_empty() {
+                config.bootstrap.root_username.clone()
+            } else {
+                config.telegram.admin_username.clone()
+            },
+            init_data_max_age_secs: config.telegram.init_data_max_age_secs,
+        },
     }
 }
 

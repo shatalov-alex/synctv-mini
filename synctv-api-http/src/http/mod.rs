@@ -349,6 +349,7 @@ fn register_extracted_auth_routes() -> Router<AppState> {
             post(auth::login_with_direct_password),
         )
         .route("/api/auth/login/start", post(auth::start_login))
+        .route("/api/auth/telegram", post(auth::login_with_telegram))
         .route(
             "/api/auth/email/registration/request",
             post(auth::request_email_registration),

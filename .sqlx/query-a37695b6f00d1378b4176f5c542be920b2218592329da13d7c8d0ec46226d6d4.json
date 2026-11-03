@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            DELETE FROM auth_telegram_identities\n            WHERE user_id = $1 AND telegram_user_id <> $2\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a37695b6f00d1378b4176f5c542be920b2218592329da13d7c8d0ec46226d6d4"
+}

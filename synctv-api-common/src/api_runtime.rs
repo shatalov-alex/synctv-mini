@@ -225,6 +225,26 @@ impl Default for ConnectionLimitSettings {
     }
 }
 
+/// Telegram Mini App sign-in (`telegram` config section). Disabled while `bot_token` is empty.
+#[derive(Clone, Default)]
+pub struct TelegramAuthSettings {
+    pub bot_token: String,
+    pub admin_user_id: i64,
+    pub admin_username: String,
+    pub init_data_max_age_secs: i64,
+}
+
+impl std::fmt::Debug for TelegramAuthSettings {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TelegramAuthSettings")
+            .field("bot_token", &"<redacted>")
+            .field("admin_user_id", &self.admin_user_id)
+            .field("admin_username", &self.admin_username)
+            .field("init_data_max_age_secs", &self.init_data_max_age_secs)
+            .finish()
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct ApiRuntimeSettings {
     pub server: ApiServerSettings,
@@ -240,6 +260,7 @@ pub struct ApiRuntimeSettings {
     pub redis: RedisRuntimeSettings,
     pub connection_limits: ConnectionLimitSettings,
     pub server_state: synctv_core::service::ServerStateRuntimeParams,
+    pub telegram: TelegramAuthSettings,
 }
 
 impl Default for ApiRuntimeSettings {
@@ -265,6 +286,7 @@ impl Default for ApiRuntimeSettings {
                 redis: synctv_core::service::ServerStateRedisOptions::default(),
                 livestream: synctv_core::service::ServerStateLivestreamOptions::default(),
             },
+            telegram: TelegramAuthSettings::default(),
         }
     }
 }

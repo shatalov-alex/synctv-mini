@@ -16,6 +16,7 @@ use super::{
 };
 
 mod external;
+pub use external::TelegramAdminLogin;
 mod oauth2;
 
 impl UserService {
@@ -452,7 +453,9 @@ mod tests {
                 AuthFactorMethod::Password => 1,
                 AuthFactorMethod::WebAuthn => 2,
                 AuthFactorMethod::Email => 4,
-                AuthFactorMethod::Totp | AuthFactorMethod::RecoveryCode => 0,
+                AuthFactorMethod::Totp
+                | AuthFactorMethod::RecoveryCode
+                | AuthFactorMethod::Telegram => 0,
             }
         })
     }

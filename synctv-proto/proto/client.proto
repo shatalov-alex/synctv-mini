@@ -25,6 +25,8 @@ service AuthService {
   rpc CreateGuestToken(CreateGuestTokenRequest) returns (CreateGuestTokenResponse);
   rpc RegisterWithDirectPassword(RegisterWithDirectPasswordRequest) returns (RegisterResponse);
   rpc LoginWithDirectPassword(LoginWithDirectPasswordRequest) returns (LoginResponse);
+  // Sign in from a Telegram Mini App launch (`Telegram.WebApp.initData`).
+  rpc LoginWithTelegram(LoginWithTelegramRequest) returns (LoginResponse);
   rpc RequestEmailRegistration(RequestEmailRegistrationRequest) returns (RequestEmailRegistrationResponse);
   rpc ConfirmEmailRegistration(ConfirmEmailRegistrationRequest) returns (RegisterResponse);
   rpc StartOpaqueRegistration(StartOpaqueRegistrationRequest) returns (StartOpaqueRegistrationResponse);
@@ -815,6 +817,14 @@ message RegisterWithDirectPasswordRequest {
   string password = 3 [(buf.validate.field).string = {
     min_len: 1
     max_len: 1024
+  }];
+}
+
+message LoginWithTelegramRequest {
+  // Raw `Telegram.WebApp.initData` query string, verified server-side against the bot token.
+  string init_data = 1 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 8192
   }];
 }
 

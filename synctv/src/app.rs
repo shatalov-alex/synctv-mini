@@ -2110,6 +2110,7 @@ mod tests {
                 root_username: String::new(),
                 root_password: String::new(),
             },
+            telegram: crate::app_config::TelegramConfig::default(),
             cluster: ClusterChannelConfig::default(),
             password_complexity: PasswordComplexityConfig::default(),
             buffer_sizes: BufferSizesConfig::default(),

@@ -101,6 +101,7 @@ fn standalone_test_config() -> Config {
             root_username: "admin".to_string(),
             root_password: "StrongPwd12345!".to_string(),
         },
+        telegram: TelegramConfig::default(),
         cluster: ClusterChannelConfig::default(), // cluster.enabled = false
         password_complexity: PasswordComplexityConfig::default(),
         buffer_sizes: BufferSizesConfig::default(),
@@ -166,6 +167,7 @@ fn cluster_test_config() -> Config {
             root_username: "admin".to_string(),
             root_password: "StrongPwd12345!".to_string(),
         },
+        telegram: TelegramConfig::default(),
         cluster: ClusterChannelConfig {
             enabled: true, // Cluster mode explicitly enabled
             secret: "test-cluster-secret-key-1234567890".to_string(),
