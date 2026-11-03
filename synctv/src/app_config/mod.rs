@@ -1420,7 +1420,7 @@ impl Default for ConnectionLimitsConfig {
     }
 }
 
-/// Telegram Mini App sign-in. Disabled while `bot_token` is empty.
+/// Telegram Mini App sign-in and bot chat. Disabled while `bot_token` is empty.
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct TelegramConfig {
@@ -1431,6 +1431,12 @@ pub struct TelegramConfig {
     pub admin_username: String,
     /// Reject Mini App launch data older than this.
     pub init_data_max_age_secs: i64,
+    /// Mini App URL for the bot's `web_app` buttons and chat menu button. Empty = no button.
+    pub web_app_url: String,
+    /// Long-poll `getUpdates` for bot commands (one node at a time: leader-gated).
+    pub bot_polling_enabled: bool,
+    /// Bot API base URL (override for a local Bot API server or tests).
+    pub api_base_url: String,
 }
 
 impl Default for TelegramConfig {
@@ -1440,6 +1446,10 @@ impl Default for TelegramConfig {
             admin_user_id: 0,
             admin_username: String::new(),
             init_data_max_age_secs: 3600,
+            web_app_url: String::new(),
+            bot_polling_enabled: true,
+            api_base_url: synctv_core::service::telegram_bot::DEFAULT_TELEGRAM_API_BASE_URL
+                .to_string(),
         }
     }
 }
@@ -1451,6 +1461,9 @@ impl std::fmt::Debug for TelegramConfig {
             .field("admin_user_id", &self.admin_user_id)
             .field("admin_username", &self.admin_username)
             .field("init_data_max_age_secs", &self.init_data_max_age_secs)
+            .field("web_app_url", &self.web_app_url)
+            .field("bot_polling_enabled", &self.bot_polling_enabled)
+            .field("api_base_url", &self.api_base_url)
             .finish()
     }
 }

@@ -678,14 +678,39 @@ pub fn api_runtime_settings(config: &AppConfig) -> ApiRuntimeSettings {
         telegram: synctv_api::TelegramAuthSettings {
             bot_token: config.telegram.bot_token.clone(),
             admin_user_id: config.telegram.admin_user_id,
-            admin_username: if config.telegram.admin_username.is_empty() {
-                config.bootstrap.root_username.clone()
-            } else {
-                config.telegram.admin_username.clone()
-            },
+            admin_username: telegram_admin_username(config),
             init_data_max_age_secs: config.telegram.init_data_max_age_secs,
         },
     }
+}
+
+fn telegram_admin_username(config: &AppConfig) -> String {
+    if config.telegram.admin_username.is_empty() {
+        config.bootstrap.root_username.clone()
+    } else {
+        config.telegram.admin_username.clone()
+    }
+}
+
+/// Bot settings, or `None` while `telegram.bot_token` is empty.
+///
+/// `server.project_url` is the project's homepage, not this server's public URL, so it is not
+/// a usable Mini App fallback: without `telegram.web_app_url` the bot shows no app button.
+pub fn telegram_bot_config(
+    config: &AppConfig,
+) -> Option<synctv_core::service::telegram_bot::TelegramBotConfig> {
+    let bot_token = config.telegram.bot_token.trim();
+    if bot_token.is_empty() {
+        return None;
+    }
+    let web_app_url = config.telegram.web_app_url.trim();
+    Some(synctv_core::service::telegram_bot::TelegramBotConfig {
+        bot_token: bot_token.to_string(),
+        api_base_url: config.telegram.api_base_url.trim().to_string(),
+        admin_user_id: config.telegram.admin_user_id,
+        admin_username: telegram_admin_username(config),
+        web_app_url: (!web_app_url.is_empty()).then(|| web_app_url.to_string()),
+    })
 }
 
 pub fn hls_storage_backend(backend: AppHlsStorageBackend) -> HlsStorageBackend {
