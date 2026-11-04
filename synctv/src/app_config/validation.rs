@@ -550,6 +550,11 @@ impl AppConfig {
         if let Err(error) = validate_service_api(&self.service_api) {
             errors.push(error);
         }
+        if let Err(error) = synctv_api::MediaRuntimeSettings::parse_proxy_mode(
+            &self.media.direct_url_default_proxy_mode,
+        ) {
+            errors.push(error);
+        }
         if self
             .server
             .web_ui_directory

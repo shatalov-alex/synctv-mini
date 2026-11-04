@@ -708,6 +708,14 @@ service_api:
     - "192.168.0.0/16"
     - "fc00::/7"
 
+media:
+  # Proxy mode for new direct-URL media whose client sends none (proxyMode auto/0):
+  # auto | prefer | only | direct_prefer | direct_only. Direct links are often bound to
+  # the IP that obtained them, so viewers on another network fail unless the server
+  # proxies (prefer/only). auto = upstream behaviour. Explicit client modes are kept.
+  # Environment variable: SYNCTV_MEDIA_DIRECT_URL_DEFAULT_PROXY_MODE
+  direct_url_default_proxy_mode: "auto"
+
   # ============================================================================
   # Cluster Configuration
   # ============================================================================

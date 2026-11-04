@@ -103,6 +103,7 @@ fn standalone_test_config() -> Config {
         },
         telegram: TelegramConfig::default(),
         service_api: ServiceApiConfig::default(),
+        media: MediaConfig::default(),
         cluster: ClusterChannelConfig::default(), // cluster.enabled = false
         password_complexity: PasswordComplexityConfig::default(),
         buffer_sizes: BufferSizesConfig::default(),
@@ -170,6 +171,7 @@ fn cluster_test_config() -> Config {
         },
         telegram: TelegramConfig::default(),
         service_api: ServiceApiConfig::default(),
+        media: MediaConfig::default(),
         cluster: ClusterChannelConfig {
             enabled: true, // Cluster mode explicitly enabled
             secret: "test-cluster-secret-key-1234567890".to_string(),

@@ -225,6 +225,43 @@ impl Default for ConnectionLimitSettings {
     }
 }
 
+/// Server-side media defaults (`media` config section).
+#[derive(Clone, Debug, Default)]
+pub struct MediaRuntimeSettings {
+    /// Proxy mode given to new direct-URL media whose request leaves it at `auto`.
+    pub direct_url_default_proxy_mode: synctv_core::models::PlaybackProxyMode,
+}
+
+impl MediaRuntimeSettings {
+    /// Parse `media.direct_url_default_proxy_mode`.
+    pub fn parse_proxy_mode(value: &str) -> Result<synctv_core::models::PlaybackProxyMode, String> {
+        use synctv_core::models::PlaybackProxyMode;
+        match value.trim().to_ascii_lowercase().replace('-', "_").as_str() {
+            "" | "auto" => Ok(PlaybackProxyMode::Auto),
+            "prefer" => Ok(PlaybackProxyMode::Prefer),
+            "only" => Ok(PlaybackProxyMode::Only),
+            "direct_prefer" => Ok(PlaybackProxyMode::DirectPrefer),
+            "direct_only" => Ok(PlaybackProxyMode::DirectOnly),
+            other => Err(format!(
+                "media.direct_url_default_proxy_mode '{other}' is not one of: auto, prefer, only, \
+                 direct_prefer, direct_only"
+            )),
+        }
+    }
+
+    /// Give a new direct-URL source the server default when the client left it at `auto`.
+    pub fn apply_direct_url_default(
+        &self,
+        source_config: &mut synctv_core::models::MediaSourceConfig,
+    ) {
+        if let synctv_core::models::MediaSourceConfig::DirectUrl(config) = source_config {
+            if config.proxy_mode == synctv_core::models::PlaybackProxyMode::Auto {
+                config.proxy_mode = self.direct_url_default_proxy_mode;
+            }
+        }
+    }
+}
+
 /// Telegram Mini App sign-in (`telegram` config section). Disabled while `bot_token` is empty.
 #[derive(Clone, Default)]
 pub struct TelegramAuthSettings {
@@ -262,6 +299,7 @@ pub struct ApiRuntimeSettings {
     pub server_state: synctv_core::service::ServerStateRuntimeParams,
     pub telegram: TelegramAuthSettings,
     pub service_api: crate::service_api::ServiceApiSettings,
+    pub media: MediaRuntimeSettings,
 }
 
 impl Default for ApiRuntimeSettings {
@@ -289,6 +327,7 @@ impl Default for ApiRuntimeSettings {
             },
             telegram: TelegramAuthSettings::default(),
             service_api: crate::service_api::ServiceApiSettings::default(),
+            media: MediaRuntimeSettings::default(),
         }
     }
 }
@@ -394,5 +433,62 @@ mod tests {
         let debug = format!("{settings:?}");
         assert!(debug.contains("<redacted>"));
         assert!(!debug.contains("cluster-runtime-debug-secret"));
+    }
+}
+
+#[cfg(test)]
+mod media_runtime_settings_tests {
+    use std::collections::HashMap;
+
+    use super::MediaRuntimeSettings;
+    use synctv_core::models::{DirectUrlMediaSourceConfig, MediaSourceConfig, PlaybackProxyMode};
+
+    fn direct_url(mode: PlaybackProxyMode) -> MediaSourceConfig {
+        let mut config = DirectUrlMediaSourceConfig::single(
+            "https://a.example/v.mp4".to_string(),
+            HashMap::new(),
+        );
+        config.proxy_mode = mode;
+        MediaSourceConfig::DirectUrl(config)
+    }
+
+    fn mode(config: &MediaSourceConfig) -> Option<PlaybackProxyMode> {
+        match config {
+            MediaSourceConfig::DirectUrl(config) => Some(config.proxy_mode),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn proxy_mode_values_parse() {
+        for (value, expected) in [
+            ("auto", PlaybackProxyMode::Auto),
+            ("", PlaybackProxyMode::Auto),
+            ("prefer", PlaybackProxyMode::Prefer),
+            ("ONLY", PlaybackProxyMode::Only),
+            ("direct_prefer", PlaybackProxyMode::DirectPrefer),
+            ("direct-only", PlaybackProxyMode::DirectOnly),
+        ] {
+            assert_eq!(MediaRuntimeSettings::parse_proxy_mode(value), Ok(expected));
+        }
+        assert!(MediaRuntimeSettings::parse_proxy_mode("always").is_err());
+    }
+
+    #[test]
+    fn default_applies_only_to_auto_direct_url_sources() {
+        let settings = MediaRuntimeSettings {
+            direct_url_default_proxy_mode: PlaybackProxyMode::Only,
+        };
+        let mut auto = direct_url(PlaybackProxyMode::Auto);
+        settings.apply_direct_url_default(&mut auto);
+        assert_eq!(mode(&auto), Some(PlaybackProxyMode::Only));
+
+        let mut explicit = direct_url(PlaybackProxyMode::DirectOnly);
+        settings.apply_direct_url_default(&mut explicit);
+        assert_eq!(mode(&explicit), Some(PlaybackProxyMode::DirectOnly));
+
+        let mut untouched = direct_url(PlaybackProxyMode::Auto);
+        MediaRuntimeSettings::default().apply_direct_url_default(&mut untouched);
+        assert_eq!(mode(&untouched), Some(PlaybackProxyMode::Auto));
     }
 }

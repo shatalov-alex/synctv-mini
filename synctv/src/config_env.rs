@@ -694,6 +694,11 @@ pub(crate) fn apply_env_overrides_with(
         &mut config.service_api.allowed_networks,
     );
 
+    env_override_str(
+        "SYNCTV_MEDIA_DIRECT_URL_DEFAULT_PROXY_MODE",
+        &mut config.media.direct_url_default_proxy_mode,
+    );
+
     env_override_str("SYNCTV_JWT_SECRET", &mut config.jwt.secret);
     env_override_str_file(
         "SYNCTV_JWT_SECRET_FILE",

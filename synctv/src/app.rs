@@ -2219,6 +2219,7 @@ mod tests {
             },
             telegram: crate::app_config::TelegramConfig::default(),
             service_api: crate::app_config::ServiceApiConfig::default(),
+            media: crate::app_config::MediaConfig::default(),
             cluster: ClusterChannelConfig::default(),
             password_complexity: PasswordComplexityConfig::default(),
             buffer_sizes: BufferSizesConfig::default(),

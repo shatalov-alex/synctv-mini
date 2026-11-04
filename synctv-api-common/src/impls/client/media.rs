@@ -1614,7 +1614,10 @@ impl ClientApiImpl {
     ) -> Result<synctv_proto::client::Media, ApiError> {
         let uid = *user_id;
         let rid = self.parse_room_id(room_id)?;
-        let service_req = build_add_media_request(req, &self.public_id_codec)?;
+        let mut service_req = build_add_media_request(req, &self.public_id_codec)?;
+        self.runtime_settings
+            .media
+            .apply_direct_url_default(&mut service_req.source_config);
         let playlist_id = service_req.playlist_id;
 
         // Check total playlist size limit before adding
@@ -2155,8 +2158,15 @@ impl ClientApiImpl {
     ) -> Result<synctv_proto::client::AddMediaBatchResponse, ApiError> {
         let uid = *user_id;
         let rid = self.parse_room_id(room_id)?;
-        let AddMediaBatchBuildResult { items, playlist_id } =
-            build_add_media_batch_request(req, &self.public_id_codec)?;
+        let AddMediaBatchBuildResult {
+            mut items,
+            playlist_id,
+        } = build_add_media_batch_request(req, &self.public_id_codec)?;
+        for item in &mut items {
+            self.runtime_settings
+                .media
+                .apply_direct_url_default(&mut item.source_config);
+        }
         let existing_count = if let Some(ref playlist_id) = playlist_id {
             let count = self
                 .room_service

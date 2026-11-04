@@ -1468,6 +1468,23 @@ impl std::fmt::Debug for TelegramConfig {
     }
 }
 
+/// Server-side media defaults.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct MediaConfig {
+    /// Proxy mode for new direct-URL media added without one (`auto` from the client):
+    /// auto | prefer | only | direct_prefer | direct_only. `auto` keeps upstream behaviour.
+    pub direct_url_default_proxy_mode: String,
+}
+
+impl Default for MediaConfig {
+    fn default() -> Self {
+        Self {
+            direct_url_default_proxy_mode: "auto".to_string(),
+        }
+    }
+}
+
 /// Service API key for another app on the internal network. Disabled while `key` is empty.
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -1879,6 +1896,7 @@ pub struct AppConfig {
     pub bootstrap: BootstrapConfig,
     pub telegram: TelegramConfig,
     pub service_api: ServiceApiConfig,
+    pub media: MediaConfig,
     pub cluster: ClusterChannelConfig,
     pub password_complexity: PasswordComplexityConfig,
     pub buffer_sizes: BufferSizesConfig,
@@ -1912,6 +1930,7 @@ impl std::fmt::Debug for AppConfig {
             .field("bootstrap", &"<redacted>")
             .field("telegram", &self.telegram)
             .field("service_api", &self.service_api)
+            .field("media", &self.media)
             .field("cluster", &self.cluster)
             .field("password_complexity", &self.password_complexity)
             .field("buffer_sizes", &self.buffer_sizes)
@@ -1947,6 +1966,7 @@ impl Default for AppConfig {
             bootstrap: BootstrapConfig::default(),
             telegram: TelegramConfig::default(),
             service_api: ServiceApiConfig::default(),
+            media: MediaConfig::default(),
             cluster: ClusterChannelConfig::default(),
             password_complexity: PasswordComplexityConfig::default(),
             buffer_sizes: BufferSizesConfig::default(),

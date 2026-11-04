@@ -682,6 +682,13 @@ pub fn api_runtime_settings(config: &AppConfig) -> ApiRuntimeSettings {
             init_data_max_age_secs: config.telegram.init_data_max_age_secs,
         },
         service_api: service_api_settings(config),
+        media: synctv_api::MediaRuntimeSettings {
+            // Validated at startup; an invalid value falls back to upstream behaviour.
+            direct_url_default_proxy_mode: synctv_api::MediaRuntimeSettings::parse_proxy_mode(
+                &config.media.direct_url_default_proxy_mode,
+            )
+            .unwrap_or_default(),
+        },
     }
 }
 

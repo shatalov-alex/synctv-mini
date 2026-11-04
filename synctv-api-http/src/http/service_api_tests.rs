@@ -312,3 +312,49 @@ async fn service_key_is_refused_when_not_configured() -> TestResult {
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     Ok(())
 }
+
+#[tokio::test]
+#[ignore = "Requires Docker-backed PostgreSQL"]
+async fn direct_url_media_without_proxy_mode_gets_the_server_default() -> TestResult {
+    let mut settings = runtime_settings(ServiceApiActAs::TelegramAdmin, TELEGRAM_ADMIN_ID)?;
+    settings.media.direct_url_default_proxy_mode = synctv_core::models::PlaybackProxyMode::Only;
+    let harness = Box::pin(setup(settings)).await?;
+    let app = &harness.app;
+    let (_, room) = send(
+        app,
+        Call::keyed("POST", "/api/rooms").json(serde_json::json!({ "name": "Proxy room" })),
+    )
+    .await?;
+    let room_id = str_field(&room, "/id")?.to_string();
+
+    let add = |proxy_mode: Option<i32>| {
+        let mut direct_url = serde_json::json!({
+            "medias": [{ "url": "https://media.example.com/clip.mp4" }]
+        });
+        if let Some(proxy_mode) = proxy_mode {
+            direct_url["proxyMode"] = serde_json::json!(proxy_mode);
+        }
+        Call::keyed("POST", format!("/api/rooms/{room_id}/media"))
+            .json(serde_json::json!({ "sourceConfig": { "directUrl": direct_url } }))
+    };
+
+    // Unset and explicit AUTO both take the server default (PLAYBACK_PROXY_MODE_ONLY = 2).
+    for proxy_mode in [None, Some(0)] {
+        let (status, media) = send(app, add(proxy_mode)).await?;
+        assert_eq!(status, StatusCode::OK, "{media}");
+        assert_eq!(
+            media.pointer("/sourceConfig/directUrl/proxyMode"),
+            Some(&serde_json::json!(2)),
+            "{media}"
+        );
+    }
+    // An explicit mode from the client is kept (PLAYBACK_PROXY_MODE_DIRECT_ONLY = 4).
+    let (status, media) = send(app, add(Some(4))).await?;
+    assert_eq!(status, StatusCode::OK, "{media}");
+    assert_eq!(
+        media.pointer("/sourceConfig/directUrl/proxyMode"),
+        Some(&serde_json::json!(4)),
+        "{media}"
+    );
+    Ok(())
+}
