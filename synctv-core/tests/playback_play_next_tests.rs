@@ -714,6 +714,7 @@ async fn test_sequential_end_rolls_back_when_outbox_creation_fails() {
             &room.id,
             owner.id,
             &make_settings_with_mode(PlayMode::Sequential),
+            true,
             Some(failing_outbox_factory),
         )
         .await
@@ -1010,7 +1011,7 @@ async fn test_auto_advance_after_previous_uses_recorded_forward_history() {
         .checked("test operation should succeed")
         .checked("A should advance to B");
     let previous = playback
-        .play_previous_for_user(&room.id, owner.id, None)
+        .play_previous_for_user(&room.id, owner.id, true, None)
         .await
         .checked("test operation should succeed")
         .checked("B should return to A");
@@ -1113,7 +1114,7 @@ async fn test_navigation_from_empty_playback_uses_first_item_and_recent_history(
     };
 
     let first = playback
-        .play_next_for_user(&room.id, owner.id, &settings, None)
+        .play_next_for_user(&room.id, owner.id, &settings, true, None)
         .await
         .checked("manual next should work with auto play disabled")
         .checked("manual next should select the first item");
@@ -1124,7 +1125,7 @@ async fn test_navigation_from_empty_playback_uses_first_item_and_recent_history(
         .await
         .checked("playback should stop");
     let restored = playback
-        .play_previous_for_user(&room.id, owner.id, None)
+        .play_previous_for_user(&room.id, owner.id, true, None)
         .await
         .checked("previous should use recent history")
         .checked("recent history should be available");
@@ -1202,7 +1203,7 @@ async fn test_playback_history_cleanup_preserves_cursor_and_adjacent_navigation(
     );
 
     let previous = playback
-        .play_previous_for_user(&room.id, owner.id, None)
+        .play_previous_for_user(&room.id, owner.id, true, None)
         .await
         .checked("previous navigation should succeed")
         .checked("the adjacent retained entry should exist");
@@ -1381,7 +1382,7 @@ async fn test_history_view_permission_cannot_change_playback() {
     let settings = make_settings_with_mode(PlayMode::Sequential);
 
     assert!(playback
-        .play_next_for_user(&room.id, viewer.id, &settings, None)
+        .play_next_for_user(&room.id, viewer.id, &settings, true, None)
         .await
         .is_err());
     assert!(playback
@@ -1445,7 +1446,7 @@ async fn test_previous_recomputes_history_after_optimistic_retry() {
     let previous_owner_id = owner.id;
     let previous = tokio::spawn(async move {
         playback_for_previous
-            .play_previous_for_user(&previous_room_id, previous_owner_id, None)
+            .play_previous_for_user(&previous_room_id, previous_owner_id, true, None)
             .await
     });
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -1905,6 +1906,63 @@ async fn test_auto_play_disabled_returns_none() {
 
 #[tokio::test]
 #[ignore = "Requires Docker"]
+async fn test_navigation_can_leave_the_new_media_paused() {
+    let (_container, pool) = create_test_pool().await;
+    let user_repo = UserRepository::new(pool.clone());
+    let room_service = make_room_service(&pool);
+    let owner = user_repo
+        .create(&make_user("paused_navigation_owner"))
+        .await
+        .checked("test operation should succeed");
+    let room = room_service
+        .create_room(
+            "Paused Navigation".to_string(),
+            String::new(),
+            owner.id,
+            None,
+            None,
+        )
+        .await
+        .checked("test operation should succeed");
+    let first = insert_root_media(&pool, &room.id, "paused_first", 0).await;
+    let second = insert_root_media(&pool, &room.id, "paused_second", 1).await;
+    let playback = room_service.playback_service();
+    let settings = make_settings_with_mode(PlayMode::Sequential);
+
+    let started = playback
+        .switch_with_outbox(room.id, owner.id, Some(first.id), None, None, false, None)
+        .await
+        .checked("switch should work");
+    assert_eq!(started.playing_media_id, Some(first.id));
+    assert!(!started.is_playing);
+    assert!(started.position.abs() < f64::EPSILON);
+
+    let next = playback
+        .play_next_for_user(&room.id, owner.id, &settings, false, None)
+        .await
+        .checked("next should work")
+        .checked("next should select the second item");
+    assert_eq!(next.playing_media_id, Some(second.id));
+    assert!(!next.is_playing);
+
+    let previous = playback
+        .play_previous_for_user(&room.id, owner.id, false, None)
+        .await
+        .checked("previous should work")
+        .checked("previous should select the first item");
+    assert_eq!(previous.playing_media_id, Some(first.id));
+    assert!(!previous.is_playing);
+
+    let playing = playback
+        .play_next_for_user(&room.id, owner.id, &settings, true, None)
+        .await
+        .checked("next should work")
+        .checked("next should select the second item");
+    assert!(playing.is_playing);
+}
+
+#[tokio::test]
+#[ignore = "Requires Docker"]
 async fn test_empty_playlist_returns_none() {
     let (_container, pool) = create_test_pool().await;
     let user_repo = UserRepository::new(pool.clone());
@@ -2176,6 +2234,7 @@ async fn test_play_next_stops_when_next_media_creator_becomes_inactive() {
             &room.id,
             room_owner.id,
             &settings,
+            true,
             Some(failing_outbox_factory),
         )
         .await

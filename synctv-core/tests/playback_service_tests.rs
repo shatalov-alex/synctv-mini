@@ -1268,7 +1268,8 @@ async fn test_play_next_concurrent_playlist_modification() {
     assert_eq!(state.playing_media_id, Some(media_ids[0]));
 
     // Set up RoomSettings with auto_play enabled
-    let settings = RoomSettings::default();
+    let mut settings = RoomSettings::default();
+    settings.auto_play.value.enabled = true;
 
     // Call play_next - should advance to second media
     let result = playback_service

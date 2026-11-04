@@ -50,6 +50,7 @@ pub struct StartPlaybackTarget {
     pub media_id: Option<MediaId>,
     pub playlist_id: Option<PlaylistId>,
     pub target: Option<synctv_core::models::ProviderTarget>,
+    pub playing: bool,
 }
 
 #[derive(Debug)]
@@ -284,6 +285,7 @@ pub fn build_start_playback_request(
         playlist_id,
         target,
         client_operation_id: _,
+        playing,
     } = req;
     let target = provider_target_from_proto(target)?;
 
@@ -294,6 +296,7 @@ pub fn build_start_playback_request(
             public_id_codec,
         )?,
         target,
+        playing: playing.unwrap_or(true),
     })
 }
 
@@ -918,6 +921,7 @@ impl ClientApiImpl {
                 target.media_id,
                 target.playlist_id,
                 target.target,
+                target.playing,
                 Some(prepared_fanout.outbox_factory_with_source_changed(true)),
             )
             .await
@@ -974,6 +978,7 @@ impl ClientApiImpl {
         req: synctv_proto::client::PlayNextRequest,
     ) -> Result<synctv_proto::client::PlaybackState, ApiError> {
         crate::impls::validate_proto_request(&req)?;
+        let playing = req.playing.unwrap_or(true);
         let client_operation_id = req.client_operation_id;
         let rid = self.parse_room_id(room_id)?;
         let settings = self
@@ -992,6 +997,7 @@ impl ClientApiImpl {
                 &rid,
                 *user_id,
                 &settings,
+                playing,
                 Some(prepared_fanout.outbox_factory_with_source_changed(true)),
             )
             .await
@@ -1021,6 +1027,7 @@ impl ClientApiImpl {
         req: synctv_proto::client::PlayPreviousRequest,
     ) -> Result<synctv_proto::client::PlaybackState, ApiError> {
         crate::impls::validate_proto_request(&req)?;
+        let playing = req.playing.unwrap_or(true);
         let client_operation_id = req.client_operation_id;
         let rid = self.parse_room_id(room_id)?;
         let previous_state = self.state_before_playback_state_update(&rid).await?;
@@ -1033,6 +1040,7 @@ impl ClientApiImpl {
             .play_previous_for_user(
                 &rid,
                 *user_id,
+                playing,
                 Some(prepared_fanout.outbox_factory_with_source_changed(true)),
             )
             .await

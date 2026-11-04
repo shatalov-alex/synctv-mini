@@ -713,6 +713,74 @@ async fn room_scoped_auto_advance_candidates_only_include_active_rooms() {
 
 #[tokio::test]
 #[ignore = "Requires Docker"]
+async fn a_finished_media_moves_on_and_plays_only_with_autoplay_on() {
+    for autoplay in [false, true] {
+        let (_container, pool) = create_test_pool().await;
+        let user_repo = UserRepository::new(pool.clone());
+        let room_service = make_room_service(pool.clone());
+        let metadata_repo = PlaybackSourceMetadataRepository::new(pool.clone());
+        let owner = user_repo
+            .create(&make_user("finished_media_owner"))
+            .await
+            .checked("test owner should be created");
+        let (room, first, state) = Box::pin(create_room_with_media(
+            &pool,
+            &room_service,
+            owner.id,
+            "Finished Media Room",
+            "Finished Media",
+        ))
+        .await;
+        let next = MediaRepository::new(pool.clone())
+            .create(&Media {
+                id: MediaId::new(),
+                position: 1.0,
+                name: "Next Media".to_string(),
+                ..first.clone()
+            })
+            .await
+            .checked("next media should be inserted");
+        let identity = PlaybackSourceIdentity::from_state(&state)
+            .checked("source identity hash should compute")
+            .checked("source identity should exist");
+        metadata_repo
+            .upsert_provider_source_metadata(
+                &identity,
+                synctv_core::models::PlaybackKind::Regular,
+                Some(30.0),
+                None,
+                None,
+            )
+            .await
+            .checked("duration should be inserted");
+        let playback = room_service.playback_service();
+        playback
+            .update_state(room.id, |s| s.position = 40.0)
+            .await
+            .checked("position should be moved past the end");
+
+        let settings = synctv_core::models::room_settings::RoomSettings {
+            auto_play: synctv_core::models::room_settings::AutoPlay::new(
+                synctv_core::models::AutoPlaySettings {
+                    enabled: autoplay,
+                    mode: synctv_core::models::PlayMode::Sequential,
+                    delay: 0,
+                },
+            ),
+            ..Default::default()
+        };
+        let advanced = playback
+            .check_and_auto_play_with_outbox(&room.id, &settings, 40.0, None)
+            .await
+            .checked("advance should work")
+            .checked("the room should move on");
+        assert_eq!(advanced.playing_media_id, Some(next.id));
+        assert_eq!(advanced.is_playing, autoplay);
+    }
+}
+
+#[tokio::test]
+#[ignore = "Requires Docker"]
 async fn room_scoped_auto_advance_candidates_skip_paused_sources() {
     let (_container, pool) = create_test_pool().await;
     let user_repo = UserRepository::new(pool.clone());

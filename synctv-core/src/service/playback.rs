@@ -107,6 +107,7 @@ struct PlaybackSwitchCommand {
     actor_user_id: UserId,
     recorded_actor_user_id: Option<UserId>,
     target: SwitchPlaybackTarget,
+    playing: bool,
     bypass_room_permissions: bool,
     outbox_event_factory: Option<RealtimeOutboxPlaybackStateEventFactory>,
 }
@@ -1564,7 +1565,7 @@ impl PlaybackService {
         playlist_id: Option<PlaylistId>,
         target: Option<ProviderTarget>,
     ) -> Result<RoomPlaybackState> {
-        self.switch_with_outbox(room_id, user_id, media_id, playlist_id, target, None)
+        self.switch_with_outbox(room_id, user_id, media_id, playlist_id, target, true, None)
             .await
     }
 
@@ -1575,6 +1576,7 @@ impl PlaybackService {
         media_id: Option<MediaId>,
         playlist_id: Option<PlaylistId>,
         target: Option<ProviderTarget>,
+        playing: bool,
         outbox_event_factory: Option<RealtimeOutboxPlaybackStateEventFactory>,
     ) -> Result<RoomPlaybackState> {
         self.switch_internal(PlaybackSwitchCommand {
@@ -1586,6 +1588,7 @@ impl PlaybackService {
                 playlist_id,
                 target,
             },
+            playing,
             bypass_room_permissions: false,
             outbox_event_factory,
         })
@@ -1605,6 +1608,7 @@ impl PlaybackService {
             actor_user_id,
             recorded_actor_user_id,
             target,
+            playing: true,
             bypass_room_permissions: true,
             outbox_event_factory,
         })
@@ -1629,6 +1633,7 @@ impl PlaybackService {
             settings,
             None,
             true,
+            true,
             PlaybackChangeReason::AutoAdvance,
             None,
         )
@@ -1640,6 +1645,7 @@ impl PlaybackService {
         room_id: &RoomId,
         user_id: UserId,
         settings: &RoomSettings,
+        playing: bool,
         outbox_event_factory: Option<RealtimeOutboxPlaybackStateEventFactory>,
     ) -> Result<Option<RoomPlaybackState>> {
         self.permission_service
@@ -1654,6 +1660,7 @@ impl PlaybackService {
             settings,
             Some(user_id),
             false,
+            playing,
             PlaybackChangeReason::Next,
             outbox_event_factory,
         )
@@ -1666,6 +1673,7 @@ impl PlaybackService {
         settings: &RoomSettings,
         actor_user_id: Option<UserId>,
         require_auto_play_enabled: bool,
+        playing: bool,
         reason: PlaybackChangeReason,
         outbox_event_factory: Option<RealtimeOutboxPlaybackStateEventFactory>,
     ) -> Result<Option<RoomPlaybackState>> {
@@ -1710,7 +1718,7 @@ impl PlaybackService {
                         updated.playing_playlist_id = next.playlist_id;
                         updated.target = next.target.clone();
                         updated.position = next.position_seconds;
-                        updated.is_playing = true;
+                        updated.is_playing = playing;
                         updated.updated_at = self.clock.now();
                         self.persist_preflight_metadata(preflight_metadata.as_ref())
                             .await?;
@@ -2027,7 +2035,7 @@ impl PlaybackService {
                     }
                 };
                 updated_state.position = 0.0;
-                updated_state.is_playing = true;
+                updated_state.is_playing = playing;
                 updated_state.updated_at = self.clock.now();
                 self.persist_preflight_metadata(preflight_metadata.as_ref())
                     .await?;
@@ -2132,6 +2140,7 @@ impl PlaybackService {
         &self,
         room_id: &RoomId,
         user_id: UserId,
+        playing: bool,
         outbox_event_factory: Option<RealtimeOutboxPlaybackStateEventFactory>,
     ) -> Result<Option<RoomPlaybackState>> {
         self.permission_service
@@ -2183,7 +2192,7 @@ impl PlaybackService {
                     updated.playing_playlist_id = entry.playlist_id;
                     updated.target.clone_from(&entry.target);
                     updated.position = 0.0;
-                    updated.is_playing = true;
+                    updated.is_playing = playing;
                     updated.updated_at = self.clock.now();
                     self.persist_preflight_metadata(preflight_metadata.as_ref())
                         .await?;
@@ -2243,12 +2252,6 @@ impl PlaybackService {
         _position: f64,
         outbox_event_factory: Option<RealtimeOutboxPlaybackStateEventFactory>,
     ) -> Result<Option<RoomPlaybackState>> {
-        let enabled = settings.auto_play.value.enabled;
-
-        if !enabled {
-            return Ok(None);
-        }
-
         let state = self.get_state(room_id).await?;
         self.auto_advance_state_if_due(&state, settings, outbox_event_factory)
             .await
@@ -2260,7 +2263,8 @@ impl PlaybackService {
         settings: &RoomSettings,
         outbox_event_factory: Option<RealtimeOutboxPlaybackStateEventFactory>,
     ) -> Result<Option<RoomPlaybackState>> {
-        if !settings.auto_play.value.enabled || !state.is_playing {
+        // A paused room never advances, so a next item waiting paused stays where it is.
+        if !state.is_playing {
             return Ok(None);
         }
 
@@ -2279,7 +2283,8 @@ impl PlaybackService {
                 &state.room_id,
                 settings,
                 None,
-                true,
+                false,
+                settings.auto_play.value.enabled,
                 PlaybackChangeReason::AutoAdvance,
                 outbox_event_factory,
             )
@@ -2550,6 +2555,7 @@ impl PlaybackService {
             actor_user_id,
             recorded_actor_user_id,
             target,
+            playing,
             bypass_room_permissions,
             outbox_event_factory,
         } = command;
@@ -2698,7 +2704,7 @@ impl PlaybackService {
                     state.playing_playlist_id = target.playlist_id;
                     state.target = target.target;
                     state.position = 0.0;
-                    state.is_playing = true;
+                    state.is_playing = playing;
                     state.updated_at = self.clock.now();
                     self.persist_preflight_metadata(preflight_metadata.as_ref())
                         .await?;

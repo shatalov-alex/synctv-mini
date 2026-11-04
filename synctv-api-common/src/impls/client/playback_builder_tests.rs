@@ -255,6 +255,7 @@ fn test_build_start_playback_request_accepts_static_playlist_context() -> TestRe
             playlist_id: codec_ok(codec.encode_playlist_id(playlist_id))?,
             target: None,
             client_operation_id: None,
+            playing: None,
         },
         &codec,
     ))?;
@@ -277,6 +278,7 @@ fn test_build_start_playback_request_parses_alist_target() -> TestResult {
             playlist_id: playlist_public_id,
             target: proto_alist_target("/tv/ep1.mp4"),
             client_operation_id: None,
+            playing: None,
         },
         &codec,
     ))?;
@@ -677,6 +679,7 @@ fn test_build_start_playback_request_converts_proto_validated_ids_without_repars
             playlist_id: String::new(),
             target: None,
             client_operation_id: None,
+            playing: None,
         },
         &codec,
     ))?;
