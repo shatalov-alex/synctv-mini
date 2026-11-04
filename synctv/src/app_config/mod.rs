@@ -1468,6 +1468,65 @@ impl std::fmt::Debug for TelegramConfig {
     }
 }
 
+/// Server-side media defaults.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct MediaConfig {
+    /// Proxy mode for new direct-URL media added without one (`auto` from the client):
+    /// auto | prefer | only | direct_prefer | direct_only. `auto` keeps upstream behaviour.
+    pub direct_url_default_proxy_mode: String,
+}
+
+impl Default for MediaConfig {
+    fn default() -> Self {
+        Self {
+            direct_url_default_proxy_mode: "auto".to_string(),
+        }
+    }
+}
+
+/// Service API key for another app on the internal network. Disabled while `key` is empty.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ServiceApiConfig {
+    /// `stk_` + at least 32 more characters; sent as `Authorization: Bearer <key>`.
+    pub key: String,
+    /// Account keyed requests act as: `telegram_admin` or a username.
+    pub act_as: String,
+    /// Socket peers (CIDR or IP) allowed to use the key.
+    pub allowed_networks: Vec<String>,
+}
+
+impl Default for ServiceApiConfig {
+    fn default() -> Self {
+        Self {
+            key: String::new(),
+            act_as: synctv_api::service_api::ServiceApiActAs::TELEGRAM_ADMIN.to_string(),
+            allowed_networks: synctv_api::service_api::DEFAULT_SERVICE_API_ALLOWED_NETWORKS
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
+        }
+    }
+}
+
+impl std::fmt::Debug for ServiceApiConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ServiceApiConfig")
+            .field(
+                "key",
+                &if self.key.is_empty() {
+                    ""
+                } else {
+                    "<redacted>"
+                },
+            )
+            .field("act_as", &self.act_as)
+            .field("allowed_networks", &self.allowed_networks)
+            .finish()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct BootstrapConfig {
@@ -1836,6 +1895,8 @@ pub struct AppConfig {
     pub connection_limits: ConnectionLimitsConfig,
     pub bootstrap: BootstrapConfig,
     pub telegram: TelegramConfig,
+    pub service_api: ServiceApiConfig,
+    pub media: MediaConfig,
     pub cluster: ClusterChannelConfig,
     pub password_complexity: PasswordComplexityConfig,
     pub buffer_sizes: BufferSizesConfig,
@@ -1868,6 +1929,8 @@ impl std::fmt::Debug for AppConfig {
             .field("connection_limits", &self.connection_limits)
             .field("bootstrap", &"<redacted>")
             .field("telegram", &self.telegram)
+            .field("service_api", &self.service_api)
+            .field("media", &self.media)
             .field("cluster", &self.cluster)
             .field("password_complexity", &self.password_complexity)
             .field("buffer_sizes", &self.buffer_sizes)
@@ -1902,6 +1965,8 @@ impl Default for AppConfig {
             connection_limits: ConnectionLimitsConfig::default(),
             bootstrap: BootstrapConfig::default(),
             telegram: TelegramConfig::default(),
+            service_api: ServiceApiConfig::default(),
+            media: MediaConfig::default(),
             cluster: ClusterChannelConfig::default(),
             password_complexity: PasswordComplexityConfig::default(),
             buffer_sizes: BufferSizesConfig::default(),

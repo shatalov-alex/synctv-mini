@@ -24,6 +24,7 @@ pub(crate) mod public;
 pub(crate) mod room;
 pub(crate) mod room_extra;
 pub(crate) mod room_invites;
+pub(crate) mod service;
 pub(crate) mod ticket;
 pub(crate) mod tv_pairing;
 pub(crate) mod user;
@@ -59,6 +60,14 @@ pub use error::{map_api_error, AppError, AppResult};
 pub use health::{create_health_router, create_metrics_router, liveness_check};
 pub use middleware::{hsts_header, security_headers_middleware};
 pub use websocket::{websocket_handler, AuthMethod};
+
+/// The request was forwarded by the Cloudflare tunnel (it carries `Cf-Ray` or
+/// `Cf-Connecting-Ip`), whatever the socket peer looks like.
+pub(crate) fn carries_cloudflare_tunnel_headers(headers: &HeaderMap) -> bool {
+    synctv_api_common::service_api::CLOUDFLARE_TUNNEL_HEADERS
+        .iter()
+        .any(|name| headers.contains_key(*name))
+}
 
 pub(crate) fn reject_duplicate_header(headers: &HeaderMap, name: &HeaderName) -> AppResult<()> {
     let mut values = headers.get_all(name).iter();
@@ -517,6 +526,10 @@ fn register_write_routes() -> Router<AppState> {
             axum::routing::patch(room::update_room_visibility),
         )
         .route(
+            "/api/rooms/{roomId}/name",
+            axum::routing::patch(room::rename_room),
+        )
+        .route(
             "/api/rooms/{roomId}/owner",
             post(room::transfer_room_ownership),
         )
@@ -556,6 +569,10 @@ fn register_write_routes() -> Router<AppState> {
         .route(
             "/api/rooms/{roomId}/playback",
             axum::routing::patch(room::update_playback_state),
+        )
+        .route(
+            "/api/rooms/{roomId}/media/{mediaId}/duration",
+            axum::routing::put(room::report_media_duration),
         )
         .route("/api/rooms/{roomId}/playlists", post(room::create_playlist))
         .route(
@@ -683,6 +700,11 @@ fn register_read_routes() -> Router<AppState> {
         )
         .route("/api/rooms/{roomId}/media/{mediaId}", get(room::get_media))
         .route("/api/rooms/{roomId}/playback", get(room::get_playback))
+        .route("/api/service/timeline", get(service::get_service_timeline))
+        .route(
+            "/api/service/rooms/{roomId}/timeline",
+            get(service::get_service_room_timeline),
+        )
         .route(
             "/api/rooms/{roomId}/playback/history",
             get(room::list_playback_history).delete(room::clear_playback_history),
@@ -1933,6 +1955,9 @@ fn apply_global_layers(router: Router<AppState>, state: &AppState) -> anyhow::Re
     Ok(
         apply_shared_http_layers(router, cors, server_config, hsts_value)
             .layer(axum_middleware::from_fn(metrics_middleware::metrics_layer))
+            .layer(axum_middleware::from_fn(
+                middleware::service_api_audit_middleware,
+            ))
             .layer(OnEarlyDropLayer::new(EarlyDropsAsFailures::new(
                 DefaultOnFailure::default(),
             )))
@@ -1953,5 +1978,7 @@ fn apply_global_layers(router: Router<AppState>, state: &AppState) -> anyhow::Re
     )
 }
 
+#[cfg(test)]
+mod service_api_tests;
 #[cfg(test)]
 mod tests;

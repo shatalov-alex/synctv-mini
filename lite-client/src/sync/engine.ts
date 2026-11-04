@@ -4,7 +4,7 @@
 // Invariants (spec §5.1/§5.3): only UI gestures send commands; player events
 // never do. Our own echoes are stored but not re-applied to the player.
 import { ApiError, type ApiClient } from '../api/http';
-import { getPlayback, playNext, playPrevious } from '../api/endpoints';
+import { getPlayback, playNext, playPrevious, reportMediaDuration } from '../api/endpoints';
 import type { Playback } from '../api/types';
 import type { VideoPlayer } from '../player/player';
 import { pickSource, type PlayableSource } from '../player/source';
@@ -57,6 +57,8 @@ interface Resolved {
   playlistId: string;
   source: PlayableSource | null;
   live: boolean;
+  /** The server already knows the media's length (`playback.durationSeconds`). */
+  durationKnown: boolean;
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
@@ -109,6 +111,8 @@ export class RoomSyncEngine implements SyncEngine {
   private loadedKey: string | null = null;
   private loadedReady = false;
   private errorReloads = 0;
+  /** Media whose duration this engine already reported: one attempt each, never retried. */
+  private readonly reportedDurations = new Set<string>();
   private syncGen = 0;
   private syncing = false;
   private loadGen = 0;
@@ -295,6 +299,7 @@ export class RoomSyncEngine implements SyncEngine {
       playlistId: playback.playlistId || '',
       source: pickSource(playback),
       live: isLivePlayback(playback),
+      durationKnown: (playback.durationSeconds ?? 0) > 0,
     };
     if (this.resolved.mediaId && !this.resolved.source) {
       this.update({ error: 'This media has no source this player can open (needs HLS or a direct video file).' });
@@ -326,7 +331,22 @@ export class RoomSyncEngine implements SyncEngine {
     if (gen !== this.loadGen || this.disposed) return;
     if (!ready) return; // init timeout; the error path or a later event retries
     this.loadedReady = true;
+    this.reportDuration();
     if (this.cur) await this.performSync(this.cur, true); // initial join / media change: forced
+  }
+
+  /**
+   * Tell the server the length the player just learned when it has none (direct
+   * URLs), so the playback resource, auto-advance and the timeline know it.
+   * Fire-and-forget: a refusal (no playback permission) or failure is not retried.
+   */
+  private reportDuration(): void {
+    const r = this.cur ? this.resolvedFor(this.cur) : null;
+    if (!r || r.live || r.durationKnown || !r.mediaId || this.reportedDurations.has(r.mediaId)) return;
+    const duration = this.player.duration;
+    if (!Number.isFinite(duration) || duration <= 0) return;
+    this.reportedDurations.add(r.mediaId);
+    reportMediaDuration(this.api, this.roomId, r.mediaId, duration).catch(() => {});
   }
 
   private waitForMetadata(gen: number): Promise<boolean> {

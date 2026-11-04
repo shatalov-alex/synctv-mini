@@ -46,11 +46,11 @@ pub(crate) use lifecycle::{
 pub(crate) use media::{
     __path_add_media, __path_clear_playlist, __path_delete_entries, __path_delete_media,
     __path_edit_media, __path_get_media, __path_get_playlist, __path_list_playlist_items,
-    __path_move_media, __path_push_media_batch,
+    __path_move_media, __path_push_media_batch, __path_report_media_duration,
 };
 pub(crate) use media::{
     add_media, clear_playlist, delete_entries, delete_media, edit_media, get_media, get_playlist,
-    list_playlist_items, move_media, push_media_batch,
+    list_playlist_items, move_media, push_media_batch, report_media_duration,
 };
 #[cfg(feature = "openapi")]
 pub(crate) use members::__path_get_room_members;
@@ -111,13 +111,14 @@ pub(crate) use report::{
 #[cfg(feature = "openapi")]
 pub(crate) use settings::{
     __path_clear_room_password, __path_finish_room_password_login,
-    __path_finish_room_password_registration, __path_get_room_settings, __path_reset_room_settings,
-    __path_start_room_password_login, __path_start_room_password_registration,
-    __path_transfer_room_ownership, __path_update_room_settings, __path_update_room_visibility,
+    __path_finish_room_password_registration, __path_get_room_settings, __path_rename_room,
+    __path_reset_room_settings, __path_start_room_password_login,
+    __path_start_room_password_registration, __path_transfer_room_ownership,
+    __path_update_room_settings, __path_update_room_visibility,
 };
 pub(crate) use settings::{
     clear_room_password, finish_room_password_login, finish_room_password_registration,
-    get_room_settings, reset_room_settings, start_room_password_login,
+    get_room_settings, rename_room, reset_room_settings, start_room_password_login,
     start_room_password_registration, transfer_room_ownership, update_room_settings,
     update_room_visibility,
 };

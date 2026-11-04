@@ -131,6 +131,18 @@ enum PlaybackHistoryTransition {
     SelectEntry(PlaybackHistoryEntry),
 }
 
+/// Upper bound for player-reported durations; anything longer is treated as bogus.
+pub const MAX_REPORTED_DURATION_SECONDS: f64 = 48.0 * 3600.0;
+
+/// Outcome of [`PlaybackService::report_media_duration`].
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct ReportedMediaDuration {
+    /// This report became the media's duration.
+    pub stored: bool,
+    /// The media's duration after the call, if known.
+    pub duration_seconds: Option<f64>,
+}
+
 #[derive(Debug, Clone, Default)]
 struct PlaybackSourceNames {
     media_name: Option<String>,
@@ -686,6 +698,101 @@ impl PlaybackService {
         )
         .await;
         Ok(updated_state)
+    }
+
+    /// Rooms whose playback is running (for the service timeline).
+    pub async fn list_playing_room_ids(&self, limit: i64) -> Result<Vec<RoomId>> {
+        self.playback_repo.list_playing_room_ids(limit).await
+    }
+
+    /// Stored metadata (name, kind, duration) of the source `state` is playing, if any.
+    pub async fn source_metadata_for_state(
+        &self,
+        state: &RoomPlaybackState,
+    ) -> Result<Option<crate::models::PlaybackSourceMetadata>> {
+        let Some(identity) = PlaybackSourceIdentity::from_state(state)? else {
+            return Ok(None);
+        };
+        self.source_metadata_repo.get(&identity).await
+    }
+
+    /// A player in the room learned the length of `media_id`. Members who may control
+    /// playback report it; it becomes the media's duration only while none is known (direct
+    /// URLs carry no backend-owned duration), so the first plausible report wins and repeats
+    /// are no-ops. Non-finite, non-positive and over-48 h values are ignored.
+    pub async fn report_media_duration(
+        &self,
+        room_id: RoomId,
+        user_id: UserId,
+        media_id: MediaId,
+        duration_seconds: f64,
+    ) -> Result<ReportedMediaDuration> {
+        self.permission_service
+            .check_permission(
+                &room_id,
+                &user_id,
+                crate::models::RoomPermission::CONTROL_PLAYBACK_STATE,
+            )
+            .await?;
+        let media = self
+            .media_service
+            .get_room_media(&room_id, &media_id)
+            .await?
+            .ok_or_else(|| Error::NotFound("Media not found".to_string()))?;
+        let crate::models::MediaSourceConfig::DirectUrl(config) = &media.source_config else {
+            return Ok(ReportedMediaDuration::default());
+        };
+        if let Some(known) = config.positive_duration_seconds() {
+            return Ok(ReportedMediaDuration {
+                stored: false,
+                duration_seconds: Some(known),
+            });
+        }
+        if !(duration_seconds.is_finite()
+            && duration_seconds > 0.0
+            && duration_seconds <= MAX_REPORTED_DURATION_SECONDS)
+        {
+            return Ok(ReportedMediaDuration::default());
+        }
+        let Some(updated) = self
+            .media_service
+            .fill_direct_url_duration(room_id, media_id, duration_seconds)
+            .await?
+        else {
+            // Raced with another report, became live, or was deleted meanwhile.
+            let known = self
+                .media_service
+                .get_room_media(&room_id, &media_id)
+                .await?
+                .and_then(|media| match media.source_config {
+                    crate::models::MediaSourceConfig::DirectUrl(config) => {
+                        config.positive_duration_seconds()
+                    }
+                    _ => None,
+                });
+            return Ok(ReportedMediaDuration {
+                stored: false,
+                duration_seconds: known,
+            });
+        };
+        // Auto-advance and the probe read the per-source metadata row, which was written with
+        // no duration when the media was selected; fill it so the current playback benefits.
+        self.source_metadata_repo
+            .fill_missing_duration(
+                &PlaybackSourceIdentity::static_media(room_id, media_id),
+                duration_seconds,
+            )
+            .await?;
+        tracing::info!(
+            room_id = %room_id,
+            media_id = %updated.id,
+            duration_seconds,
+            "Stored player-reported media duration"
+        );
+        Ok(ReportedMediaDuration {
+            stored: true,
+            duration_seconds: Some(duration_seconds),
+        })
     }
 
     pub async fn chat_playback_metadata_for_state(

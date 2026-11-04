@@ -121,6 +121,10 @@ The server's default CSP (`security_headers_middleware`) is
 - **Autoplay.** If autoplay is blocked, playback is retried muted, and the next
   user gesture unmutes.
 - **Next/previous.** These go over HTTP, and the response is ignored.
+- **Duration.** When a non-live source loads and the `playback` resource has
+  no `durationSeconds` (usual for direct URLs), the player's duration is sent
+  once per media with `PUT /api/rooms/{room}/media/{media}/duration`. The
+  server keeps the first plausible value; failures are not retried.
 
 Choices made where the spec was ambiguous (also noted in the code):
 

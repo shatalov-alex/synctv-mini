@@ -160,8 +160,8 @@ pub use permission::{
 };
 pub use playback::{
     PlaybackService, PlaybackServiceRuntime, PlaybackSourceExpectation, PlaybackStatePatch,
-    PlaybackStateUpdateRequest, RealtimeOutboxPlaybackStateEventFactory, SeekResponse,
-    SwitchPlaybackTarget,
+    PlaybackStateUpdateRequest, RealtimeOutboxPlaybackStateEventFactory, ReportedMediaDuration,
+    SeekResponse, SwitchPlaybackTarget, MAX_REPORTED_DURATION_SECONDS,
 };
 pub use playback_auto_advance::{ActivePlaybackRoomSource, PlaybackAutoAdvanceService};
 pub use playback_duration_probe::PlaybackDurationProbeService;
@@ -293,9 +293,9 @@ pub use user::{
     OpaqueRegistrationSession, OpaqueRegistrationSessionStore, OpaqueRegistrationStartChallenge,
     PendingAccountRegistration, RefreshRateLimitConfig, RegistrationMode, RegistrationPolicy,
     SensitiveVerificationChallenge, SensitiveVerificationOutcome, SensitiveVerificationSession,
-    SensitiveVerificationSessionStore, TelegramAdminLogin, TotpRecoveryCodes, TotpSetup,
-    UserDeletedChatMessage, UserDeletedRoomImpact, UserDeletionOptions, UserDeletionSource,
-    UserDeletionSummary, UserRestoreOptions, UserRestoreResult, UserService,
+    SensitiveVerificationSessionStore, ServiceApiActAs, TelegramAdminLogin, TotpRecoveryCodes,
+    TotpSetup, UserDeletedChatMessage, UserDeletedRoomImpact, UserDeletionOptions,
+    UserDeletionSource, UserDeletionSummary, UserRestoreOptions, UserRestoreResult, UserService,
     UserServiceDependencies, UserServiceRuntimeOptions,
 };
 pub use user::{

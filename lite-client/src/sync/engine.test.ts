@@ -84,13 +84,13 @@ function fakePlayer() {
 }
 
 function fakeApi() {
-  const requests: Array<{ method: string; path: string }> = [];
+  const requests: Array<{ method: string; path: string; body?: unknown }> = [];
   let ticket = 0;
   const api = {
     requests,
     ticketError: null as Error | null,
-    request: async (method: string, path: string) => {
-      requests.push({ method, path });
+    request: async (method: string, path: string, body?: unknown) => {
+      requests.push({ method, path, body });
       if (path === '/api/tickets') {
         if (api.ticketError) throw api.ticketError;
         return { ticket: `t${++ticket}` };
@@ -474,6 +474,68 @@ describe('RoomSyncEngine playback errors', () => {
     await flush();
     expect((player.currentSource as { url: string }).url).toBe('https://x/a.mp4');
     expect(player.calls[0]).toBe('load');
+  });
+});
+
+describe('RoomSyncEngine duration reporting', () => {
+  const reports = (api: ReturnType<typeof fakeApi>) => api.requests.filter((r) => r.path.endsWith('/duration'));
+
+  it('reports the player duration once per media when the server has none', async () => {
+    const { ws, api, player } = await setup();
+    player.duration = 1234.5;
+    ws.push(playbackEvent(playback));
+    ws.push(stateEvent(state()));
+    await flush();
+    expect(reports(api)).toEqual([
+      { method: 'PUT', path: '/api/rooms/room_1/media/med_1/duration', body: { durationSeconds: 1234.5 } },
+    ]);
+
+    // Reloading the same media (error recovery, new signed URL) does not report again.
+    player.emit('error');
+    await flush();
+    ws.push(playbackEvent({ ...playback, playbackInfos: { direct: { medias: [{ url: 'https://x/b.mp4' }] } } }));
+    await flush();
+    expect(reports(api)).toHaveLength(1);
+  });
+
+  it('a failed report is not retried', async () => {
+    const { ws, api, player } = await setup();
+    const original = api.request;
+    (api as any).request = async (method: string, path: string, body?: unknown) => {
+      if (path.endsWith('/duration')) {
+        api.requests.push({ method, path, body });
+        throw new ApiError(403, 'forbidden');
+      }
+      return original(method, path, body);
+    };
+    ws.push(playbackEvent(playback));
+    ws.push(stateEvent(state()));
+    await flush();
+    vi.advanceTimersByTime(10_000);
+    await flush();
+    expect(reports(api)).toHaveLength(1);
+    expect(player.calls.slice(0, 3)).toEqual(['load', 'seek:50', 'play']); // playback unaffected
+  });
+
+  it('skips media whose duration is known, live sources and unknown player durations', async () => {
+    const known = await setup();
+    known.ws.push(playbackEvent({ ...playback, durationSeconds: 60 }));
+    known.ws.push(stateEvent(state()));
+    await flush();
+    expect(reports(known.api)).toEqual([]);
+
+    const live = await setup();
+    live.ws.push(playbackEvent({ ...playback, playbackKind: 2 }));
+    live.ws.push(stateEvent(state()));
+    await flush();
+    expect(reports(live.api)).toEqual([]);
+
+    const unknown = await setup();
+    unknown.player.duration = Infinity; // e.g. a stream without an end
+    unknown.ws.push(playbackEvent(playback));
+    unknown.ws.push(stateEvent(state()));
+    await flush();
+    expect(reports(unknown.api)).toEqual([]);
   });
 });
 

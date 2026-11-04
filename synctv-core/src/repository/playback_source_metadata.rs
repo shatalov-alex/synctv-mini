@@ -665,6 +665,45 @@ impl PlaybackSourceMetadataRepository {
         Ok(result.rows_affected() == 1)
     }
 
+    /// Record a duration a player reported for a source whose duration is still unknown.
+    /// Live sources and sources with a known duration are left alone. Returns whether the
+    /// row changed (`false` also when the source has no metadata row yet).
+    pub async fn fill_missing_duration(
+        &self,
+        identity: &PlaybackSourceIdentity,
+        duration_seconds: f64,
+    ) -> Result<bool> {
+        let result = sqlx::query!(
+            r"
+            UPDATE playback_source_metadata
+               SET duration_seconds = $5,
+                   duration_status = $6,
+                   duration_source = $7,
+                   duration_error = NULL,
+                   next_retry_at = NULL,
+                   version = version + 1
+             WHERE room_id = $1
+               AND media_id IS NOT DISTINCT FROM $2
+               AND playlist_id IS NOT DISTINCT FROM $3
+               AND target_hash = $4
+               AND duration_seconds IS NULL
+               AND playback_kind <> $8
+            ",
+            identity.room_id as RoomId,
+            identity.media_id.map(i64::from),
+            identity.playlist_id.map(i64::from),
+            &identity.target_hash,
+            duration_seconds,
+            i16::from(PlaybackDurationStatus::Available),
+            i16::from(PlaybackDurationSource::Provider),
+            i16::from(PlaybackKind::Live),
+        )
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected() == 1)
+    }
+
     pub async fn mark_probe_failed(
         &self,
         identity: &PlaybackSourceIdentity,

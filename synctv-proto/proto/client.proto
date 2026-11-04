@@ -1624,6 +1624,21 @@ message UpdateRoomSettingsRequest {
   google.protobuf.FieldMask update_mask = 2 [(buf.validate.field).required = true];
 }
 
+// HTTP API: PATCH /api/rooms/{room_id}/name (members who manage room settings)
+message RenameRoomRequest {
+  string name = 1 [
+    (buf.validate.field).string = {
+      min_len: 1
+      max_len: 100
+    },
+    (buf.validate.field).cel = {
+      id: "rename_room.name.no_angle_brackets"
+      message: "name must not contain HTML-like tags"
+      expression: "!this.contains('<') && !this.contains('>')"
+    }
+  ];
+}
+
 message UpdateRoomVisibilityRequest {
   bool is_public = 1;
 }
@@ -2503,6 +2518,25 @@ message MoveMediaRequest {
 message MoveMediaResponse {
   int32 moved_count = 1;
   repeated Media media = 2;
+}
+
+// HTTP API: PUT /api/rooms/{room_id}/media/{media_id}/duration
+// A player that learned the media's length reports it. It becomes the media's duration only
+// while none is known; non-finite, non-positive and over-48 h values are ignored.
+message ReportMediaDurationRequest {
+  string media_id = 1 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 64
+    pattern: "^med_[A-Za-z0-9]+$"
+  }];
+  double duration_seconds = 2;
+}
+
+message ReportMediaDurationResponse {
+  // This report became the media's duration.
+  bool stored = 1;
+  // The media's duration after the call, if known.
+  optional double duration_seconds = 2;
 }
 
 // Edit Media

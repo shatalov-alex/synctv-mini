@@ -33,6 +33,7 @@ pub mod runtime;
 pub mod runtime_adapters;
 pub mod seafile_thumbnail_urls;
 pub mod server_settings;
+pub mod service_api;
 pub mod status;
 pub mod synology_image_urls;
 #[cfg(any(test, feature = "test-support"))]

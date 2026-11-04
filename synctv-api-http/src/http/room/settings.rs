@@ -8,7 +8,7 @@ use crate::http::{middleware::RequestMetadata, AppResult, AppState};
 use synctv_api_common::impls::{EndpointRateLimitCategory, EndpointRateLimitScope};
 use synctv_proto::client::{
     ClearRoomPasswordRequest, FinishRoomPasswordLoginRequest,
-    FinishRoomPasswordRegistrationRequest, JoinRoomResponse, Room, RoomSettings,
+    FinishRoomPasswordRegistrationRequest, JoinRoomResponse, RenameRoomRequest, Room, RoomSettings,
     SetRoomPasswordResponse, StartRoomPasswordLoginRequest, StartRoomPasswordLoginResponse,
     StartRoomPasswordRegistrationRequest, StartRoomPasswordRegistrationResponse,
     TransferRoomOwnershipRequest, UpdateRoomSettingsRequest, UpdateRoomVisibilityRequest,
@@ -323,6 +323,51 @@ pub async fn update_room_settings(
         move |client_api, authenticated| async move {
             client_api
                 .update_room_settings(&authenticated.user_id(), &room_id, req)
+                .await
+        },
+    )
+    .await?;
+
+    Ok(Json(response))
+}
+
+#[cfg_attr(
+    feature = "openapi",
+    utoipa::path(
+        patch,
+        path = "/api/rooms/{roomId}/name",
+        tag = "Room",
+        params(
+            ("roomId" = String, Path, description = "Room ID")
+        ),
+        request_body = RenameRoomRequest,
+        responses(
+            (status = 200, description = "Room renamed", body = Room),
+            (status = 400, description = "Invalid name", body = crate::openapi::GoogleRpcStatusSchema),
+            (status = 401, description = "Authentication required", body = crate::openapi::GoogleRpcStatusSchema),
+            (status = 403, description = "Permission denied", body = crate::openapi::GoogleRpcStatusSchema),
+            (status = 404, description = "Room not found", body = crate::openapi::GoogleRpcStatusSchema)
+        ),
+        security(
+            ("bearer_auth" = [])
+        )
+    )
+)]
+pub async fn rename_room(
+    request_meta: RequestMetadata,
+    State(state): State<AppState>,
+    Path(path): Path<synctv_proto::client::RoomPathRequest>,
+    Json(req): Json<RenameRoomRequest>,
+) -> AppResult<Json<Room>> {
+    let room_id = path.room_id;
+    let response = execute_user_endpoint(
+        &state,
+        request_meta,
+        EndpointRateLimitCategory::Write,
+        EndpointRateLimitScope::RoomSettings,
+        move |client_api, authenticated| async move {
+            client_api
+                .rename_room(&authenticated.user_id(), &room_id, req)
                 .await
         },
     )

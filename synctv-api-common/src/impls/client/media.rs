@@ -1614,7 +1614,10 @@ impl ClientApiImpl {
     ) -> Result<synctv_proto::client::Media, ApiError> {
         let uid = *user_id;
         let rid = self.parse_room_id(room_id)?;
-        let service_req = build_add_media_request(req, &self.public_id_codec)?;
+        let mut service_req = build_add_media_request(req, &self.public_id_codec)?;
+        self.runtime_settings
+            .media
+            .apply_direct_url_default(&mut service_req.source_config);
         let playlist_id = service_req.playlist_id;
 
         // Check total playlist size limit before adding
@@ -1769,6 +1772,31 @@ impl ClientApiImpl {
 
         self.media_to_proto_for_viewer_with_loaded_cover(&media, true, Some(uid))
             .await
+    }
+
+    /// A player reported the media's length (`PUT .../media/{mediaId}/duration`).
+    pub async fn report_media_duration(
+        &self,
+        user_id: &UserId,
+        room_id: &str,
+        req: synctv_proto::client::ReportMediaDurationRequest,
+    ) -> Result<synctv_proto::client::ReportMediaDurationResponse, ApiError> {
+        crate::impls::validate_proto_request(&req)?;
+        let rid = self.parse_room_id(room_id)?;
+        let media_id = crate::impls::proto_validated_media_id(req.media_id, &self.public_id_codec)?;
+        let reported = self
+            .room_service
+            .playback_service()
+            .report_media_duration(rid, *user_id, media_id, req.duration_seconds)
+            .await
+            .map_err(ApiError::from)?;
+        if reported.stored {
+            self.room_cache_fanout.publish_invalidation(&rid);
+        }
+        Ok(synctv_proto::client::ReportMediaDurationResponse {
+            stored: reported.stored,
+            duration_seconds: reported.duration_seconds,
+        })
     }
 
     pub async fn create_media_cover_upload_session(
@@ -2155,8 +2183,15 @@ impl ClientApiImpl {
     ) -> Result<synctv_proto::client::AddMediaBatchResponse, ApiError> {
         let uid = *user_id;
         let rid = self.parse_room_id(room_id)?;
-        let AddMediaBatchBuildResult { items, playlist_id } =
-            build_add_media_batch_request(req, &self.public_id_codec)?;
+        let AddMediaBatchBuildResult {
+            mut items,
+            playlist_id,
+        } = build_add_media_batch_request(req, &self.public_id_codec)?;
+        for item in &mut items {
+            self.runtime_settings
+                .media
+                .apply_direct_url_default(&mut item.source_config);
+        }
         let existing_count = if let Some(ref playlist_id) = playlist_id {
             let count = self
                 .room_service

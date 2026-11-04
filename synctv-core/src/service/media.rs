@@ -1053,6 +1053,49 @@ impl MediaService {
         Ok(updated_media)
     }
 
+    /// Store a player-reported duration on a direct-URL media that has none yet (and is not
+    /// marked live). `None` when the media is gone, is not a direct URL, or already has one.
+    pub async fn fill_direct_url_duration(
+        &self,
+        room_id: RoomId,
+        media_id: MediaId,
+        duration_seconds: f64,
+    ) -> Result<Option<Media>> {
+        crate::service::optimistic_retry::retry_with_optimistic_lock(
+            Self::EDIT_MAX_RETRIES,
+            crate::service::optimistic_retry::DEFAULT_BACKOFF_BASE_MS,
+            &format!("Media duration update failed after retries for media_id={media_id}"),
+            || async {
+                let Some(mut media) = self
+                    .media_repo
+                    .get_by_room_and_id(&room_id, &media_id)
+                    .await?
+                else {
+                    return Ok(None);
+                };
+                let expected_version = media.version;
+                let MediaSourceConfig::DirectUrl(config) = &mut media.source_config else {
+                    return Ok(None);
+                };
+                if config.positive_duration_seconds().is_some()
+                    || config.playback_kind == Some(crate::models::PlaybackKind::Live)
+                {
+                    return Ok(None);
+                }
+                config.duration_seconds = Some(duration_seconds);
+                match self
+                    .media_repo
+                    .update_with_version(&media, expected_version)
+                    .await?
+                {
+                    Some(updated) => Ok(Some(updated)),
+                    None => Err(Error::OptimisticLockConflict),
+                }
+            },
+        )
+        .await
+    }
+
     pub async fn admin_edit_media_with_outbox(
         &self,
         room_id: RoomId,

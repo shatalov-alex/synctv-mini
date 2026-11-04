@@ -16,7 +16,7 @@ use super::{
 };
 
 mod external;
-pub use external::TelegramAdminLogin;
+pub use external::{ServiceApiActAs, TelegramAdminLogin};
 mod oauth2;
 
 impl UserService {

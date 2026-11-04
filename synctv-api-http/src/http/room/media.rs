@@ -11,7 +11,7 @@ use synctv_proto::client::{
     AddMediaBatchRequest, AddMediaRequest, ClearPlaylistRequest, ClearPlaylistResponse,
     DeleteEntriesRequest, DeleteEntriesResponse, DeleteMediaQuery, DeleteMediaRequest,
     DeleteMediaResponse, EditMediaRequest, ListPlaylistItemsRequest, Media, MoveMediaRequest,
-    MoveMediaResponse,
+    MoveMediaResponse, ReportMediaDurationRequest, ReportMediaDurationResponse,
 };
 
 #[cfg_attr(
@@ -313,6 +313,53 @@ pub async fn edit_media(
         move |client_api, authenticated| async move {
             client_api
                 .edit_media(&authenticated.user_id(), &room_id, req)
+                .await
+        },
+    )
+    .await?;
+
+    Ok(Json(response))
+}
+
+#[cfg_attr(
+    feature = "openapi",
+    utoipa::path(
+        put,
+        path = "/api/rooms/{roomId}/media/{mediaId}/duration",
+        tag = "Room",
+        params(
+            ("roomId" = String, Path, description = "Room ID"),
+            ("mediaId" = String, Path, description = "Media ID")
+        ),
+        request_body = ReportMediaDurationRequest,
+        responses(
+            (status = 200, description = "Duration recorded, or already known", body = ReportMediaDurationResponse),
+            (status = 401, description = "Authentication required", body = crate::openapi::GoogleRpcStatusSchema),
+            (status = 403, description = "Cannot control playback in this room", body = crate::openapi::GoogleRpcStatusSchema),
+            (status = 404, description = "Media not found", body = crate::openapi::GoogleRpcStatusSchema)
+        ),
+        security(
+            ("bearer_auth" = [])
+        )
+    )
+)]
+/// A player learned the media's length; kept only while no duration is known.
+pub async fn report_media_duration(
+    request_meta: RequestMetadata,
+    State(state): State<AppState>,
+    Path(path): Path<synctv_proto::client::RoomMediaTargetPathRequest>,
+    Json(mut req): Json<ReportMediaDurationRequest>,
+) -> AppResult<Json<ReportMediaDurationResponse>> {
+    let synctv_proto::client::RoomMediaTargetPathRequest { room_id, media_id } = path;
+    req.media_id = media_id;
+    let response = execute_user_endpoint(
+        &state,
+        request_meta,
+        EndpointRateLimitCategory::Write,
+        EndpointRateLimitScope::RoomPlayback,
+        move |client_api, authenticated| async move {
+            client_api
+                .report_media_duration(&authenticated.user_id(), &room_id, req)
                 .await
         },
     )

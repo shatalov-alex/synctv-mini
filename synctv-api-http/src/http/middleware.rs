@@ -64,6 +64,9 @@ where
                 .with_authorization(authorization)
                 .with_client_ip(client_ip)
                 .with_socket_ip(peer_ip)
+                .with_via_cloudflare_tunnel(super::carries_cloudflare_tunnel_headers(
+                    &parts.headers,
+                ))
                 .with_user_agent(user_agent)
                 .with_timeout(Some(synctv_core::resilience::timeout::HTTP_REQUEST_TIMEOUT)),
             ))
@@ -71,6 +74,36 @@ where
 
         ready(result)
     }
+}
+
+/// Info-level audit line for every request that presented the service API key: method,
+/// path (no query string), status and socket peer. The key itself is never logged.
+pub async fn service_api_audit_middleware(request: Request, next: Next) -> Response {
+    let keyed = request
+        .headers()
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(synctv_api_common::service_api::service_api_key_from_authorization)
+        .is_some();
+    if !keyed {
+        return next.run(request).await;
+    }
+    let method = request.method().clone();
+    let path = request.uri().path().to_owned();
+    let peer_ip = request
+        .extensions()
+        .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+        .map(|info| info.0.ip());
+    let response = next.run(request).await;
+    tracing::info!(
+        target: "synctv::service_api",
+        method = %method,
+        path = %path,
+        status = response.status().as_u16(),
+        peer_ip = ?peer_ip,
+        "Service API request"
+    );
+    response
 }
 
 /// Pre-validated security header names (validated once at startup via Lazy)
