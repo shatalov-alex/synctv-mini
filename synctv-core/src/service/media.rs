@@ -83,6 +83,41 @@ pub struct AddMediaRequest {
     pub source_config: MediaSourceConfig,
 }
 
+/// A replacement direct-URL source is usually a fresh link to the same video, so settings the
+/// request leaves out stay as they were: the proxy mode (or `default_proxy_mode` when the media
+/// has none), the playback kind and the known duration.
+fn keep_direct_url_settings_on_replacement(
+    previous: &MediaSourceConfig,
+    replacement: &mut MediaSourceConfig,
+    default_proxy_mode: Option<crate::models::PlaybackProxyMode>,
+) {
+    let MediaSourceConfig::DirectUrl(replacement) = replacement else {
+        return;
+    };
+    let previous = match previous {
+        MediaSourceConfig::DirectUrl(previous) => Some(previous),
+        _ => None,
+    };
+    if replacement.proxy_mode.is_auto() {
+        replacement.proxy_mode = previous
+            .map(|previous| previous.proxy_mode)
+            .filter(|mode| !mode.is_auto())
+            .or(default_proxy_mode)
+            .unwrap_or(replacement.proxy_mode);
+    }
+    let Some(previous) = previous else {
+        return;
+    };
+    if replacement.playback_kind.is_none() {
+        replacement.playback_kind = previous.playback_kind;
+    }
+    if replacement.duration_seconds.is_none()
+        && replacement.playback_kind != Some(crate::models::PlaybackKind::Live)
+    {
+        replacement.duration_seconds = previous.positive_duration_seconds();
+    }
+}
+
 /// Request to edit a media item
 #[derive(Debug, Clone)]
 pub struct EditMediaRequest {
@@ -96,6 +131,9 @@ pub struct EditMediaRequest {
     /// Replacement provider instance, optionally updated without changing the
     /// source config.
     pub provider_instance_name: Option<String>,
+    /// Proxy mode for a replacement direct-URL source when neither the request nor the
+    /// media has one (`media.direct_url_default_proxy_mode`).
+    pub direct_url_default_proxy_mode: Option<crate::models::PlaybackProxyMode>,
 }
 
 #[derive(Debug, Clone)]
@@ -367,10 +405,17 @@ impl MediaService {
             return Ok(None);
         }
 
-        let source_config = request
-            .source_config
-            .clone()
-            .unwrap_or_else(|| media.source_config.clone());
+        let source_config = request.source_config.clone().map_or_else(
+            || media.source_config.clone(),
+            |mut source_config| {
+                keep_direct_url_settings_on_replacement(
+                    &media.source_config,
+                    &mut source_config,
+                    request.direct_url_default_proxy_mode,
+                );
+                source_config
+            },
+        );
         let source_provider = source_config.provider();
         let provider_instance_name = provider_instance_name_for_source_update(
             Some(media.source_provider),

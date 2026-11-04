@@ -477,6 +477,57 @@ describe('RoomSyncEngine playback errors', () => {
   });
 });
 
+describe('RoomSyncEngine replaced links', () => {
+  it('a new link recovers a player that gave up, at the room position', async () => {
+    const { ws, player, api, engine } = await setup();
+    ws.push(playbackEvent(playback));
+    ws.push(stateEvent(state({ generatedAtMillis: String(T0) })));
+    await flush();
+    (api as any).request = async () => ({ playback });
+    for (let i = 0; i < 4; i++) {
+      player.emit('error');
+      await flush();
+    }
+    expect(engine.snapshot().error).toBe('Playback error');
+    player.calls.length = 0;
+    player.currentTime = 0;
+
+    const relinked = { ...playback, playbackInfos: { direct: { medias: [{ url: 'https://cdn/new.mp4' }] } } };
+    ws.push(playbackEvent(relinked));
+    await flush();
+
+    expect(engine.snapshot().error).toBeNull();
+    expect(player.calls).toEqual(expect.arrayContaining(['load', 'seek:50']));
+    expect((player.currentSource as { url: string }).url).toBe('https://cdn/new.mp4');
+  });
+
+  it('a new link does not interrupt a player that is still working', async () => {
+    const { ws, player } = await setup();
+    ws.push(playbackEvent(playback));
+    ws.push(stateEvent(state({ generatedAtMillis: String(T0) })));
+    await flush();
+    player.calls.length = 0;
+    const relinked = { ...playback, playbackInfos: { direct: { medias: [{ url: 'https://cdn/new.mp4' }] } } };
+    ws.push(playbackEvent(relinked));
+    await flush();
+    expect(player.calls).not.toContain('load');
+  });
+
+  it('errors far apart each get their own reload budget', async () => {
+    const { ws, player, api, engine } = await setup();
+    ws.push(playbackEvent(playback));
+    ws.push(stateEvent(state({ generatedAtMillis: String(T0) })));
+    await flush();
+    (api as any).request = async () => ({ playback });
+    for (let i = 0; i < 5; i++) {
+      player.emit('error');
+      await flush();
+      await vi.advanceTimersByTimeAsync(61_000);
+    }
+    expect(engine.snapshot().error).toBeNull();
+  });
+});
+
 describe('RoomSyncEngine duration reporting', () => {
   const reports = (api: ReturnType<typeof fakeApi>) => api.requests.filter((r) => r.path.endsWith('/duration'));
 

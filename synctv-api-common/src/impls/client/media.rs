@@ -1594,6 +1594,7 @@ pub fn build_edit_media_request(
             })
             .transpose()?,
         provider_instance_name: req.provider_instance_name,
+        direct_url_default_proxy_mode: None,
     })
 }
 
@@ -1748,7 +1749,9 @@ impl ClientApiImpl {
     ) -> Result<synctv_proto::client::Media, ApiError> {
         let uid = *user_id;
         let rid = self.parse_room_id(room_id)?;
-        let service_req = build_edit_media_request(req, &self.public_id_codec)?;
+        let mut service_req = build_edit_media_request(req, &self.public_id_codec)?;
+        service_req.direct_url_default_proxy_mode =
+            Some(self.runtime_settings.media.direct_url_default_proxy_mode);
 
         let username = self.media_actor_username_for_event(&uid).await?;
         let prepared_outbox_fanout = self

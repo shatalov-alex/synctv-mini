@@ -51,6 +51,7 @@ impl RoomService {
             playback_proxy_mode: None,
             source_config: None,
             provider_instance_name: None,
+            direct_url_default_proxy_mode: None,
         };
         self.media_service
             .edit_media(room_id, user_id, request)

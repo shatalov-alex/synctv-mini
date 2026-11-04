@@ -49,6 +49,8 @@ export const BACKGROUND_RECONNECT_MS = 15_000;
 /** Past the sync cooldown, so the first frames have played before measuring drift. */
 const SETTLE_DELAY_MS = SYNC_COOLDOWN_MS + 200;
 const MAX_ERROR_RELOADS = 3;
+/** Reloads this far apart are separate incidents (e.g. each 30 min URL expiry of a long film). */
+const ERROR_RELOAD_WINDOW_MS = 60_000;
 /** "Completed" tolerance for play-from-end (custom_video_player.dart:1769). */
 const ENDED_TOLERANCE_S = 0.5;
 
@@ -111,6 +113,9 @@ export class RoomSyncEngine implements SyncEngine {
   private loadedKey: string | null = null;
   private loadedReady = false;
   private errorReloads = 0;
+  private lastErrorReloadAt = 0;
+  /** Gave up reloading this source; a new `playback` resource may bring a working link. */
+  private playbackFailed = false;
   /** Media whose duration this engine already reported: one attempt each, never retried. */
   private readonly reportedDurations = new Set<string>();
   private syncGen = 0;
@@ -304,6 +309,15 @@ export class RoomSyncEngine implements SyncEngine {
     if (this.resolved.mediaId && !this.resolved.source) {
       this.update({ error: 'This media has no source this player can open (needs HLS or a direct video file).' });
     }
+    if (this.playbackFailed && this.resolved.source?.key === this.loadedKey) {
+      // Its link was replaced while the player was stuck on the old one. Same media, so
+      // load() puts the player back at the room's position.
+      this.playbackFailed = false;
+      this.errorReloads = 0;
+      this.update({ error: null });
+      void this.load(this.resolved.source);
+      return;
+    }
     if (this.cur) void this.apply(this.cur);
   }
 
@@ -321,6 +335,7 @@ export class RoomSyncEngine implements SyncEngine {
   private async load(source: PlayableSource): Promise<void> {
     const gen = ++this.loadGen;
     if (source.key !== this.loadedKey) this.errorReloads = 0;
+    this.playbackFailed = false;
     this.loadedKey = source.key;
     this.loadedReady = false;
     if (source.requiresHeaders) {
@@ -449,11 +464,15 @@ export class RoomSyncEngine implements SyncEngine {
 
   private onPlayerError(message: string): void {
     const source = this.player.currentSource;
+    const now = Date.now();
+    if (now - this.lastErrorReloadAt > ERROR_RELOAD_WINDOW_MS) this.errorReloads = 0;
     if (source && this.errorReloads < MAX_ERROR_RELOADS) {
       this.errorReloads++;
+      this.lastErrorReloadAt = now;
       void this.reloadFresh(source); // then a forced sync once ready
       return;
     }
+    this.playbackFailed = true;
     this.update({ error: message });
   }
 

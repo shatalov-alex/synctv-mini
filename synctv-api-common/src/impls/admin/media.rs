@@ -1010,8 +1010,10 @@ impl AdminApiImpl {
             .public_id_codec
             .decode_room_id(room_id)
             .map_err(|e| ApiError::InvalidInput(e.clone()))?;
-        let service_req =
+        let mut service_req =
             crate::impls::client::media::build_edit_media_request(req, &self.public_id_codec)?;
+        service_req.direct_url_default_proxy_mode =
+            Some(self.runtime_settings.media.direct_url_default_proxy_mode);
         let actor = self.require_admin_actor(admin_user_id).await?;
         let prepared_outbox_fanout = self.media_fanout.prepare_updated_outbox_fanout(
             rid,
