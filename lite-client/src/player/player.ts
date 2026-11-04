@@ -147,6 +147,9 @@ export class VideoPlayer {
   get buffering(): boolean {
     return this.waiting || (!this.video.paused && this.video.readyState < 3);
   }
+  get seeking(): boolean {
+    return this.video.seeking;
+  }
   get readyState(): number {
     return this.video.readyState;
   }

@@ -147,6 +147,7 @@ export function needsCorrection(s: SyncState, player: PlayerView, serverNowMs: n
 export interface LoadView {
   loaded: boolean;
   paused: boolean;
+  seeking: boolean;
   buffering: boolean;
   stalledMs: number;
   readyState: number;
@@ -161,7 +162,7 @@ export interface LoadView {
  */
 export function nextReady(previous: boolean, v: LoadView): boolean {
   if (!v.loaded) return false;
-  const enough = v.atEnd || v.readyState >= 4 || v.bufferedAhead >= READY_BUFFER_S;
+  const enough = !v.seeking && (v.atEnd || v.readyState >= 4 || v.bufferedAhead >= READY_BUFFER_S);
   if (v.paused || !previous) return enough;
   return !(v.buffering && v.stalledMs >= STALL_GRACE_MS);
 }

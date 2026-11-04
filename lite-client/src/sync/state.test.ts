@@ -154,7 +154,7 @@ describe('reconnect backoff', () => {
 });
 
 describe('nextReady', () => {
-  const view = { loaded: true, paused: true, buffering: false, stalledMs: 0, readyState: 4, bufferedAhead: 0, atEnd: false };
+  const view = { loaded: true, paused: true, seeking: false, buffering: false, stalledMs: 0, readyState: 4, bufferedAhead: 0, atEnd: false };
 
   it('needs the video loaded', () => {
     expect(nextReady(true, { ...view, loaded: false })).toBe(false);
@@ -172,6 +172,10 @@ describe('nextReady', () => {
     expect(nextReady(true, playing)).toBe(true);
     expect(nextReady(true, { ...playing, buffering: true, stalledMs: STALL_GRACE_MS - 1 })).toBe(true);
     expect(nextReady(true, { ...playing, buffering: true, stalledMs: STALL_GRACE_MS })).toBe(false);
+  });
+
+  it('is not ready while seeking, whatever the browser says about the old position', () => {
+    expect(nextReady(false, { ...view, seeking: true, bufferedAhead: 30 })).toBe(false);
   });
 
   it('once out it needs the real buffer again', () => {

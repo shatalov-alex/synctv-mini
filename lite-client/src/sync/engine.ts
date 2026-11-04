@@ -39,6 +39,7 @@ import {
   SYNC_LOOP_MS,
   type SyncState,
   AUTO_SEEK_THRESHOLD_S,
+  READY_BUFFER_S,
   MAX_PULL_BACK_S,
   STALL_GRACE_MS,
   nextReady,
@@ -439,8 +440,9 @@ export class RoomSyncEngine implements SyncEngine {
       });
       if (plan.rate !== null) this.player.setRate(plan.rate);
       if (plan.pause) this.player.pause();
-      if (plan.seek !== null) this.player.seek(plan.seek);
+      if (plan.seek !== null) this.seekPlayer(plan.seek);
       this.syncedVersion = s.version;
+      this.reportStatus(false);
       if (!isCurrent()) return;
       if (plan.play) {
         // Seek + start (join, media change, resync): the time spent buffering
@@ -511,6 +513,15 @@ export class RoomSyncEngine implements SyncEngine {
     };
   }
 
+  /** A jump to a part that isn't buffered: the room shouldn't play on before it has loaded. */
+  private seekPlayer(target: number): void {
+    const from = this.player.currentTime;
+    this.player.seek(target);
+    if (Math.abs(target - from) > AUTO_SEEK_THRESHOLD_S && this.player.bufferedAhead < READY_BUFFER_S) {
+      this.deviceReady = false;
+    }
+  }
+
   private onPlayerProgress(type: string): void {
     if (type === 'waiting') {
       if (!this.stalledSince) this.stalledSince = Date.now();
@@ -558,6 +569,7 @@ export class RoomSyncEngine implements SyncEngine {
     this.deviceReady = nextReady(this.deviceReady, {
       loaded,
       paused: this.player.paused,
+      seeking: this.player.seeking,
       buffering: this.player.buffering,
       stalledMs: this.stalledSince ? Date.now() - this.stalledSince : 0,
       readyState: this.player.readyState,
@@ -638,7 +650,7 @@ export class RoomSyncEngine implements SyncEngine {
       this.player.pause();
       playing = false;
     } else if (kind === 'seek') {
-      this.player.seek(clamp(arg || 0));
+      this.seekPlayer(clamp(arg || 0));
       // restore the expected play state after the seek
       if (cur.playing && this.player.paused) void this.player.play();
       else if (!cur.playing && !this.player.paused) this.player.pause();
@@ -680,6 +692,7 @@ export class RoomSyncEngine implements SyncEngine {
       const r = this.ops.reject(opId);
       if (r.state) void this.apply(r.state, { forceSeek: true });
     }
+    this.reportStatus(false);
   }
 
   private async navigate(call: (api: ApiClient, roomId: string) => Promise<unknown>): Promise<void> {
