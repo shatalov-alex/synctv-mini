@@ -32,7 +32,7 @@ export interface SyncSnapshot {
   playlist: Media[] | null;
   /** New media starts playing (else it waits paused); null without `roomDetails` or before the first push. */
   autoPlay: boolean | null;
-  /** Bumped whenever someone joins, leaves or is removed from the room. */
+  /** Bumped whenever someone comes online in the room, or leaves or is removed from it. */
   memberChanges: number;
 }
 

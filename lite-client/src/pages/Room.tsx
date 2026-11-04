@@ -29,7 +29,7 @@ export function Room({ roomId, me }: { roomId: string; me: User | null }) {
   };
   const connected = !!snapshot && snapshot.connection === 'open';
   const memberChanges = snapshot ? snapshot.memberChanges : 0;
-  // Pairing and unpairing change the membership; a reconnect may have missed that.
+  // Pairing and unpairing show up as member changes; a reconnect may have missed them.
   useEffect(() => {
     if (connected) reloadTvs().catch(() => {});
   }, [roomId, connected, memberChanges]);

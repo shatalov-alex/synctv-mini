@@ -42,6 +42,7 @@ export function observeMessages(profile: Record<string, unknown>, options: { roo
       },
       { observeResource: { observeId: 'room_settings', deliveryMode: DELIVERY_PUSH_SNAPSHOT, roomSettings: {} } },
       { observeResource: { observeId: 'room_members', deliveryMode: DELIVERY_PUSH_SNAPSHOT, roomMemberEvents: {} } },
+      { observeResource: { observeId: 'room_online', deliveryMode: DELIVERY_PUSH_SNAPSHOT, onlineEvent: {} } },
     );
   }
   return messages;
@@ -101,6 +102,8 @@ export function playbackUpdateMessage(cmd: UpdateCommand): unknown {
   return { playbackStateUpdate: msg };
 }
 
+const ONLINE_EVENT_JOINED = 1;
+
 export type Incoming =
   | { kind: 'state'; state: WirePlaybackState }
   | { kind: 'playback'; playback: Playback }
@@ -139,6 +142,8 @@ export function parseIncoming(text: string): Incoming {
     if (ev.observeId === 'playlist_items' && !ev.changedOnly) return { kind: 'playlist', media: ev.playlistItems?.media || [] };
     if (ev.observeId === 'room_settings' && ev.roomSettings) return { kind: 'settings', autoPlay: !!ev.roomSettings.settings?.autoPlay?.enabled };
     if (ev.observeId === 'room_members' && ev.roomMemberEvent) return { kind: 'members' };
+    // A newly paired TV joins silently: the first sign of it is coming online. ONLINE_EVENT_KIND_JOINED = 1.
+    if (ev.observeId === 'room_online' && ev.onlineEvent && ev.onlineEvent.kind === ONLINE_EVENT_JOINED) return { kind: 'members' };
     return { kind: 'other' };
   }
   if (msg.error && typeof msg.error === 'object') {

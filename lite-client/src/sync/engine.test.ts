@@ -301,6 +301,7 @@ describe('RoomSyncEngine', () => {
       'playlist_items',
       'room_settings',
       'room_members',
+      'room_online',
     ]);
     expect(ws.sent[2].observeResource).toMatchObject({ deliveryMode: 2, playlistItems: { request: { pageSize: 100 } } });
     expect(engine.snapshot().playlist).toBeNull();
@@ -348,6 +349,10 @@ describe('RoomSyncEngine', () => {
     ws.push({ resourceEvent: { observeId: 'room_members', roomMemberEvent: { kind: 4 } } });
     ws.push({ resourceEvent: { observeId: 'room_members', roomMemberEvent: { kind: 1 } } });
     expect(engine.snapshot().memberChanges).toBe(2);
+    ws.push({ resourceEvent: { observeId: 'room_online', onlineEvent: { kind: 1, userId: 'usr_tv' } } });
+    expect(engine.snapshot().memberChanges).toBe(3);
+    ws.push({ resourceEvent: { observeId: 'room_online', onlineEvent: { kind: 2, userId: 'usr_tv' } } });
+    expect(engine.snapshot().memberChanges).toBe(3);
   });
 
   it('a refused playlist observation leaves the playlist unknown', async () => {
