@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { EchoGuard } from './echo';
-import { preferNativeHls } from './player';
+import { preferNativeHls, isRefusal } from './player';
 import { isHlsSource, pickSource } from './source';
 
 describe('EchoGuard', () => {
@@ -68,5 +68,12 @@ describe('HLS engine choice', () => {
   it('falls back to native when there is no MSE, and never without native support', () => {
     expect(preferNativeHls(video(true), { vendor: 'Google Inc.', hasMse: false })).toBe(true);
     expect(preferNativeHls(video(false), { vendor: 'Apple Computer, Inc.', hasMse: true })).toBe(false);
+  });
+});
+
+describe('isRefusal', () => {
+  it('is true only for 4xx answers', () => {
+    for (const code of [401, 403, 404, 410]) expect(isRefusal(code)).toBe(true);
+    for (const code of [undefined, 0, 200, 500, 503]) expect(isRefusal(code)).toBe(false);
   });
 });

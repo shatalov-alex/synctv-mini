@@ -1013,6 +1013,7 @@ async fn test_edit_media_optimistic_lock_retry_exhaustion() {
         playback_proxy_mode: None,
         source_config: None,
         provider_instance_name: None,
+        direct_url_default_proxy_mode: None,
     };
 
     let result = media_service
@@ -1101,6 +1102,7 @@ async fn test_edit_media_persists_playback_proxy_mode_and_preserves_source_confi
                 playback_proxy_mode: None,
                 source_config: None,
                 provider_instance_name: None,
+                direct_url_default_proxy_mode: None,
             },
         )
         .await
@@ -1119,6 +1121,7 @@ async fn test_edit_media_persists_playback_proxy_mode_and_preserves_source_confi
                 playback_proxy_mode: Some(synctv_core::models::PlaybackProxyMode::DirectOnly),
                 source_config: None,
                 provider_instance_name: None,
+                direct_url_default_proxy_mode: None,
             },
         )
         .await
@@ -1204,6 +1207,7 @@ async fn test_edit_media_can_switch_provider_instance_without_replacing_source_c
                 playback_proxy_mode: None,
                 source_config: None,
                 provider_instance_name: Some("direct-url-secondary".to_string()),
+                direct_url_default_proxy_mode: None,
             },
         )
         .await
@@ -1227,6 +1231,7 @@ async fn test_edit_media_can_switch_provider_instance_without_replacing_source_c
                     "https://example.com/replacement.mp4",
                 )),
                 provider_instance_name: None,
+                direct_url_default_proxy_mode: None,
             },
         )
         .await
@@ -1253,6 +1258,7 @@ async fn test_edit_media_can_switch_provider_instance_without_replacing_source_c
                 playback_proxy_mode: None,
                 source_config: Some(synctv_core_testing::rtmp_managed_live_media_source_config()),
                 provider_instance_name: None,
+                direct_url_default_proxy_mode: None,
             },
         )
         .await

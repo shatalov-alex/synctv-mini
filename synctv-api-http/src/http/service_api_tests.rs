@@ -369,6 +369,163 @@ async fn direct_url_media_without_proxy_mode_gets_the_server_default() -> TestRe
     Ok(())
 }
 
+#[tokio::test]
+#[ignore = "Requires PostgreSQL and Redis"]
+async fn replacing_an_expired_link_keeps_the_viewing_and_applies_the_proxy_default() -> TestResult {
+    let mut settings = runtime_settings(ServiceApiActAs::TelegramAdmin, TELEGRAM_ADMIN_ID)?;
+    settings.media.direct_url_default_proxy_mode = synctv_core::models::PlaybackProxyMode::Only;
+    let harness = Box::pin(setup(settings)).await?;
+    let app = &harness.app;
+    let room_id = create_room(app, "Link refresh room").await?;
+    let media_id = add_direct_url(app, &room_id, "movie", None).await?;
+    let other_id = add_direct_url(app, &room_id, "other", None).await?;
+
+    let media_url = format!("/api/rooms/{room_id}/media/{media_id}");
+    let playback_url = format!("/api/rooms/{room_id}/playback");
+    let (status, state) = send(
+        app,
+        Call::keyed("POST", format!("{playback_url}/start"))
+            .json(serde_json::json!({ "mediaId": media_id })),
+    )
+    .await?;
+    assert_eq!(status, StatusCode::OK, "start: {state}");
+    assert_eq!(
+        report_duration(app, &room_id, &media_id, 5400.0).await?["stored"],
+        true
+    );
+    let (status, state) = send(
+        app,
+        Call::keyed("PATCH", &playback_url).json(serde_json::json!({
+            "type": 2, "playing": false, "position": 1234.0
+        })),
+    )
+    .await?;
+    assert_eq!(status, StatusCode::OK, "seek: {state}");
+
+    let replace = |url: &str, proxy_mode: Option<i32>| {
+        let mut direct_url = serde_json::json!({ "medias": [{ "url": url }] });
+        if let Some(proxy_mode) = proxy_mode {
+            direct_url["proxyMode"] = serde_json::json!(proxy_mode);
+        }
+        Call::keyed("PATCH", &media_url)
+            .json(serde_json::json!({ "sourceConfig": { "directUrl": direct_url } }))
+    };
+
+    // 1. The media was stored direct-only; a new link with no mode must not silently drop it...
+    let (status, media) = send(app, replace("https://media.example.com/new-1.mp4", None)).await?;
+    assert_eq!(status, StatusCode::OK, "{media}");
+    assert_eq!(
+        media.pointer("/sourceConfig/directUrl/proxyMode"),
+        Some(&serde_json::json!(4)),
+        "{media}"
+    );
+    // 2. ...and the length of the film is still known.
+    assert_eq!(
+        media.pointer("/sourceConfig/directUrl/durationSeconds"),
+        Some(&serde_json::json!(5400.0)),
+        "{media}"
+    );
+    // 3. The room stays on the same media at the same position, paused.
+    let (_, playback) = send(app, Call::keyed("GET", &playback_url)).await?;
+    assert_eq!(
+        str_field(&playback, "/playbackState/playingMediaId")?,
+        media_id,
+        "{playback}"
+    );
+    assert_eq!(
+        playback.pointer("/playbackState/position"),
+        Some(&serde_json::json!(1234.0)),
+        "{playback}"
+    );
+    assert_eq!(
+        playback.pointer("/playbackState/isPlaying"),
+        None,
+        "{playback}"
+    );
+    assert_eq!(
+        playback.pointer("/playback/durationSeconds"),
+        Some(&serde_json::json!(5400.0)),
+        "{playback}"
+    );
+
+    // 4. An explicit length and mode replace the kept ones.
+    let (status, media) = send(
+        app,
+        Call::keyed("PATCH", &media_url).json(serde_json::json!({ "sourceConfig": { "directUrl": {
+            "medias": [{ "url": "https://media.example.com/new-1b.mp4" }],
+            "proxyMode": 1,
+            "durationSeconds": 6000.0
+        } } })),
+    )
+    .await?;
+    assert_eq!(status, StatusCode::OK, "{media}");
+    assert_eq!(
+        media.pointer("/sourceConfig/directUrl/proxyMode"),
+        Some(&serde_json::json!(1)),
+        "{media}"
+    );
+    let (_, playback) = send(app, Call::keyed("GET", &playback_url)).await?;
+    assert_eq!(
+        playback.pointer("/playback/durationSeconds"),
+        Some(&serde_json::json!(6000.0)),
+        "{playback}"
+    );
+
+    // 5. Watched earlier, then re-linked while the room is elsewhere: the saved spot survives.
+    let (status, _) = send(
+        app,
+        Call::keyed("POST", format!("{playback_url}/start"))
+            .json(serde_json::json!({ "mediaId": other_id })),
+    )
+    .await?;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = send(app, replace("https://media.example.com/new-2.mp4", Some(2))).await?;
+    assert_eq!(status, StatusCode::OK);
+    let (status, history) =
+        send(app, Call::keyed("GET", format!("{playback_url}/history"))).await?;
+    assert_eq!(status, StatusCode::OK, "{history}");
+    let entries = history
+        .pointer("/entries")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| anyhow::anyhow!("no entries: {history}"))?;
+    let entry = entries
+        .iter()
+        .find(|entry| {
+            entry
+                .pointer("/mediaId")
+                .and_then(serde_json::Value::as_str)
+                == Some(media_id.as_str())
+        })
+        .ok_or_else(|| anyhow::anyhow!("movie not in history: {history}"))?;
+    assert_eq!(
+        entry.pointer("/positionSeconds"),
+        Some(&serde_json::json!(1234.0)),
+        "{entry}"
+    );
+    let (status, state) = send(
+        app,
+        Call::keyed(
+            "POST",
+            format!("{playback_url}/history/{}/play", str_field(entry, "/id")?),
+        )
+        .json(serde_json::json!({})),
+    )
+    .await?;
+    assert_eq!(status, StatusCode::OK, "{state}");
+    let (_, playback) = send(app, Call::keyed("GET", &playback_url)).await?;
+    assert_eq!(
+        str_field(&playback, "/playbackState/playingMediaId")?,
+        media_id,
+        "{playback}"
+    );
+    let resumed = playback
+        .pointer("/playbackState/position")
+        .and_then(serde_json::Value::as_f64)
+        .ok_or_else(|| anyhow::anyhow!("no position: {playback}"))?;
+    assert!((1234.0..1236.0).contains(&resumed), "{playback}");
+    Ok(())
+}
+
 pub(crate) async fn create_room(app: &axum::Router, name: &str) -> TestResult<String> {
     let (status, room) = send(
         app,

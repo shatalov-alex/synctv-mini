@@ -180,6 +180,24 @@ curl -s -X POST "$SYNCTV/api/rooms/$ROOM/media/move" -H "$AUTH" -H 'Content-Type
 
 Rename a media you added: `PATCH /api/rooms/$ROOM/media/$MEDIA` with `{"name": "..."}`.
 
+Replace an expired link with the same request, sending only the new URL:
+
+```sh
+curl -s -X PATCH "$SYNCTV/api/rooms/$ROOM/media/$MEDIA" -H "$AUTH" -H 'Content-Type: application/json' -d '{
+  "sourceConfig": {"directUrl": {"medias": [{"url": "https://cdn.example.com/part1-new.mp4"}]}}
+}'
+```
+
+The media stays the same entity: its ID, playlist place and the room's position and
+play/pause state don't change, and so does its spot in the playback history. Viewers
+stuck on the dead link recover on their own at the room's position.
+
+- `proxyMode` left out (or 0): the media keeps its current mode. If it has none, the server
+  default `media.direct_url_default_proxy_mode` applies.
+- `durationSeconds` left out: the known length stays. Send it if the new link is a
+  different video, or auto-advance will use the old length.
+- Don't call `POST /playback/start` afterwards. It starts the media from 0.
+
 Delete one media, or clear the root playlist:
 
 ```sh

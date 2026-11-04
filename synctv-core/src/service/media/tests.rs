@@ -56,3 +56,85 @@ fn media_edit_requires_matching_creator() {
         Err(Error::Authorization(_))
     ));
 }
+
+mod replacement_source {
+    use super::*;
+    use crate::models::{MediaSourceConfig, PlaybackKind, PlaybackProxyMode};
+
+    fn direct(
+        proxy_mode: PlaybackProxyMode,
+        duration_seconds: Option<f64>,
+        playback_kind: Option<PlaybackKind>,
+    ) -> MediaSourceConfig {
+        let MediaSourceConfig::DirectUrl(mut config) =
+            direct_url_media_source_config("https://media.example.com/a.mp4")
+        else {
+            unreachable!("helper builds a direct URL");
+        };
+        config.proxy_mode = proxy_mode;
+        config.duration_seconds = duration_seconds;
+        config.playback_kind = playback_kind;
+        MediaSourceConfig::DirectUrl(config)
+    }
+
+    fn replaced(
+        previous: &MediaSourceConfig,
+        mut replacement: MediaSourceConfig,
+        default_proxy_mode: Option<PlaybackProxyMode>,
+    ) -> crate::models::DirectUrlMediaSourceConfig {
+        keep_direct_url_settings_on_replacement(previous, &mut replacement, default_proxy_mode);
+        match replacement {
+            MediaSourceConfig::DirectUrl(config) => config,
+            other => panic!("unexpected source {other:?}"),
+        }
+    }
+
+    #[test]
+    fn omitted_settings_stay_as_they_were() {
+        let config = replaced(
+            &direct(PlaybackProxyMode::DirectOnly, Some(5400.0), None),
+            direct(PlaybackProxyMode::Auto, None, None),
+            Some(PlaybackProxyMode::Only),
+        );
+        assert_eq!(config.proxy_mode, PlaybackProxyMode::DirectOnly);
+        assert_eq!(config.duration_seconds, Some(5400.0));
+    }
+
+    #[test]
+    fn media_without_a_mode_takes_the_server_default() {
+        let config = replaced(
+            &direct(PlaybackProxyMode::Auto, None, None),
+            direct(PlaybackProxyMode::Auto, None, None),
+            Some(PlaybackProxyMode::Only),
+        );
+        assert_eq!(config.proxy_mode, PlaybackProxyMode::Only);
+        let config = replaced(
+            &direct(PlaybackProxyMode::Auto, None, None),
+            direct(PlaybackProxyMode::Auto, None, None),
+            None,
+        );
+        assert_eq!(config.proxy_mode, PlaybackProxyMode::Auto);
+    }
+
+    #[test]
+    fn explicit_settings_win() {
+        let config = replaced(
+            &direct(PlaybackProxyMode::DirectOnly, Some(5400.0), None),
+            direct(PlaybackProxyMode::Prefer, Some(6000.0), None),
+            Some(PlaybackProxyMode::Only),
+        );
+        assert_eq!(config.proxy_mode, PlaybackProxyMode::Prefer);
+        assert_eq!(config.duration_seconds, Some(6000.0));
+    }
+
+    #[test]
+    fn a_live_replacement_gets_no_duration() {
+        let config = replaced(
+            &direct(PlaybackProxyMode::Only, Some(5400.0), None),
+            direct(PlaybackProxyMode::Auto, None, Some(PlaybackKind::Live)),
+            None,
+        );
+        assert_eq!(config.duration_seconds, None);
+        assert_eq!(config.proxy_mode, PlaybackProxyMode::Only);
+    }
+}
