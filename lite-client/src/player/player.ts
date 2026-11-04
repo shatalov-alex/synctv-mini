@@ -8,9 +8,13 @@ type HlsInstance = {
   loadSource(url: string): void;
   attachMedia(el: HTMLMediaElement): void;
   destroy(): void;
-  on(event: string, cb: (event: string, data: { fatal?: boolean; type?: string; details?: string }) => void): void;
+  on(
+    event: string,
+    cb: (event: string, data: { fatal?: boolean; type?: string; details?: string; response?: { code?: number } }) => void,
+  ): void;
   recoverMediaError(): void;
   startLoad(): void;
+  stopLoad(): void;
 };
 
 export type PlayerEventType =
@@ -87,6 +91,20 @@ export function preferNativeHls(video: HTMLVideoElement, env: { vendor: string; 
 function hlsEnv(): { vendor: string; hasMse: boolean } {
   return { vendor: navigator.vendor || '', hasMse: 'MediaSource' in window || 'ManagedMediaSource' in window };
 }
+
+/** The server answered and said no (expired or replaced link): asking again won't help. */
+export function isRefusal(code: number | undefined): boolean {
+  return code !== undefined && code >= 400 && code < 500;
+}
+
+/**
+ * Consecutive refused segments before the link counts as dead. hls.js would keep asking for
+ * ~30 s without a fatal error, then longer for each restart. One refusal is left to it: on a
+ * multi-bitrate stream it moves to another variant.
+ */
+const MAX_REFUSED_SEGMENTS = 2;
+
+const REFUSED_MESSAGE = 'This video could not be opened: the format is not supported or the link refused this device';
 
 export class VideoPlayer {
   private readonly echo = new EchoGuard();
@@ -253,11 +271,22 @@ export class VideoPlayer {
     const hls = new Hls({ enableWorker: true, lowLatencyMode: false, backBufferLength: 30 }) as unknown as HlsInstance;
     this.hls = hls;
     let mediaRecoveries = 0;
+    let refusedSegments = 0;
+    hls.on(Hls.Events.FRAG_LOADED, () => {
+      refusedSegments = 0;
+    });
     hls.on(Hls.Events.ERROR, (_event, data) => {
+      if (data.details === Hls.ErrorDetails.FRAG_LOAD_ERROR && isRefusal(data.response?.code)) {
+        if (++refusedSegments >= MAX_REFUSED_SEGMENTS) {
+          hls.stopLoad();
+          this.emit('error', true, REFUSED_MESSAGE);
+        }
+        return;
+      }
       if (!data.fatal) return;
       if (data.type === Hls.ErrorTypes.MEDIA_ERROR && mediaRecoveries++ < 2) {
         hls.recoverMediaError();
-      } else if (data.type === Hls.ErrorTypes.NETWORK_ERROR && mediaRecoveries++ < 3) {
+      } else if (data.type === Hls.ErrorTypes.NETWORK_ERROR && !isRefusal(data.response?.code) && mediaRecoveries++ < 3) {
         hls.startLoad();
       } else if (token === this.loadToken && this.tryNativeHls(url)) {
         // hls.js never got going (often a stream without CORS headers, which
@@ -327,7 +356,7 @@ function mediaErrorMessage(code: number): string {
       return 'The video could not be decoded';
     case 4:
       // Browsers also report a refused request (403, expired link) this way.
-      return 'This video could not be opened: the format is not supported or the link refused this device';
+      return REFUSED_MESSAGE;
     default:
       return 'Playback error';
   }
