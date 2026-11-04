@@ -24,6 +24,22 @@ pub(crate) struct ServiceApiHarness {
     pub(crate) admin: synctv_core::models::User,
 }
 
+fn test_pool(state: &super::AppState) -> TestResult<sqlx::PgPool> {
+    state
+        .test_database_leases()
+        .lock()
+        .map_err(|error| anyhow::anyhow!("lease lock poisoned: {error}"))?
+        .first()
+        .map(|lease| lease.pool.clone())
+        .ok_or_else(|| anyhow::anyhow!("test database lease missing"))
+}
+
+impl ServiceApiHarness {
+    pub(crate) fn pool(&self) -> TestResult<sqlx::PgPool> {
+        test_pool(&self.state)
+    }
+}
+
 pub(crate) fn runtime_settings(
     act_as: ServiceApiActAs,
     telegram_admin_user_id: i64,
@@ -74,13 +90,7 @@ pub(crate) async fn setup(
     settings: synctv_api_common::ApiRuntimeSettings,
 ) -> TestResult<ServiceApiHarness> {
     let state = test_app_state_with_runtime_settings(settings);
-    let pool = state
-        .test_database_leases()
-        .lock()
-        .map_err(|error| anyhow::anyhow!("lease lock poisoned: {error}"))?
-        .first()
-        .map(|lease| lease.pool.clone())
-        .ok_or_else(|| anyhow::anyhow!("test database lease missing"))?;
+    let pool = test_pool(&state)?;
     let admin = create_user(&pool, "svc_admin", synctv_core::models::UserRole::Admin).await?;
     let app = super::create_router_from_shared_state(&state)?;
     Ok(ServiceApiHarness { state, app, admin })
@@ -355,6 +365,190 @@ async fn direct_url_media_without_proxy_mode_gets_the_server_default() -> TestRe
         media.pointer("/sourceConfig/directUrl/proxyMode"),
         Some(&serde_json::json!(4)),
         "{media}"
+    );
+    Ok(())
+}
+
+pub(crate) async fn create_room(app: &axum::Router, name: &str) -> TestResult<String> {
+    let (status, room) = send(
+        app,
+        Call::keyed("POST", "/api/rooms").json(serde_json::json!({ "name": name })),
+    )
+    .await?;
+    anyhow::ensure!(status == StatusCode::OK, "create room: {room}");
+    Ok(str_field(&room, "/id")?.to_string())
+}
+
+pub(crate) async fn add_direct_url(
+    app: &axum::Router,
+    room_id: &str,
+    name: &str,
+    duration_seconds: Option<f64>,
+) -> TestResult<String> {
+    let mut direct_url = serde_json::json!({
+        "medias": [{ "url": format!("https://media.example.com/{name}.mp4") }],
+        "proxyMode": 4
+    });
+    if let Some(duration_seconds) = duration_seconds {
+        direct_url["durationSeconds"] = serde_json::json!(duration_seconds);
+    }
+    let (status, media) = send(
+        app,
+        Call::keyed("POST", format!("/api/rooms/{room_id}/media")).json(serde_json::json!({
+            "name": name,
+            "sourceConfig": { "directUrl": direct_url }
+        })),
+    )
+    .await?;
+    anyhow::ensure!(status == StatusCode::OK, "add media: {media}");
+    Ok(str_field(&media, "/id")?.to_string())
+}
+
+async fn report_duration(
+    app: &axum::Router,
+    room_id: &str,
+    media_id: &str,
+    duration_seconds: f64,
+) -> TestResult<serde_json::Value> {
+    let (status, body) = send(
+        app,
+        Call::keyed(
+            "PUT",
+            format!("/api/rooms/{room_id}/media/{media_id}/duration"),
+        )
+        .json(serde_json::json!({ "durationSeconds": duration_seconds })),
+    )
+    .await?;
+    anyhow::ensure!(status == StatusCode::OK, "report duration: {body}");
+    Ok(body)
+}
+
+#[tokio::test]
+#[ignore = "Requires Docker-backed PostgreSQL"]
+async fn reported_duration_is_kept_once_and_served_by_playback() -> TestResult {
+    let harness = Box::pin(setup(runtime_settings(
+        ServiceApiActAs::TelegramAdmin,
+        TELEGRAM_ADMIN_ID,
+    )?))
+    .await?;
+    let app = &harness.app;
+    let room_id = create_room(app, "Duration room").await?;
+    let media_id = add_direct_url(app, &room_id, "movie", None).await?;
+
+    // Selected before anyone knows its length: playback has no duration yet.
+    let (status, state) = send(
+        app,
+        Call::keyed("POST", format!("/api/rooms/{room_id}/playback/start"))
+            .json(serde_json::json!({ "mediaId": media_id })),
+    )
+    .await?;
+    assert_eq!(status, StatusCode::OK, "start playback: {state}");
+    let (_, playback) = send(
+        app,
+        Call::keyed("GET", format!("/api/rooms/{room_id}/playback")),
+    )
+    .await?;
+    assert_eq!(
+        playback.pointer("/playback/durationSeconds"),
+        None,
+        "{playback}"
+    );
+
+    let first = report_duration(app, &room_id, &media_id, 1234.5).await?;
+    assert_eq!(
+        first,
+        serde_json::json!({ "stored": true, "durationSeconds": 1234.5 })
+    );
+    // Idempotent: a later, different report does not replace it (pbjson omits stored=false).
+    let second = report_duration(app, &room_id, &media_id, 99.0).await?;
+    assert_eq!(
+        second,
+        serde_json::json!({ "durationSeconds": 1234.5 })
+    );
+
+    let (_, playback) = send(
+        app,
+        Call::keyed("GET", format!("/api/rooms/{room_id}/playback")),
+    )
+    .await?;
+    assert_eq!(
+        playback.pointer("/playback/durationSeconds"),
+        Some(&serde_json::json!(1234.5)),
+        "{playback}"
+    );
+
+    // The per-source metadata row written at selection time is filled too (auto-advance).
+    let internal_room_id = harness
+        .state
+        .shared_api_runtime
+        .public_id_codec
+        .decode_room_id(&room_id)
+        .map_err(anyhow::Error::msg)?;
+    let internal_media_id = harness
+        .state
+        .shared_api_runtime
+        .public_id_codec
+        .decode_media_id(&media_id)
+        .map_err(anyhow::Error::msg)?;
+    let pool = harness.pool()?;
+    let metadata = synctv_core::repository::PlaybackSourceMetadataRepository::new(pool)
+        .get(&synctv_core::models::PlaybackSourceIdentity::static_media(
+            internal_room_id,
+            internal_media_id,
+        ))
+        .await
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?
+        .ok_or_else(|| anyhow::anyhow!("metadata row missing"))?;
+    assert_eq!(metadata.duration_seconds, Some(1234.5));
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "Requires Docker-backed PostgreSQL"]
+async fn implausible_or_redundant_durations_are_ignored() -> TestResult {
+    let harness = Box::pin(setup(runtime_settings(
+        ServiceApiActAs::TelegramAdmin,
+        TELEGRAM_ADMIN_ID,
+    )?))
+    .await?;
+    let app = &harness.app;
+    let room_id = create_room(app, "Bogus durations").await?;
+    let media_id = add_direct_url(app, &room_id, "clip", None).await?;
+    for bogus in [0.0, -5.0, 48.0 * 3600.0 + 1.0] {
+        let body = report_duration(app, &room_id, &media_id, bogus).await?;
+        assert_eq!(body, serde_json::json!({}), "{bogus}");
+    }
+
+    // A duration the adder supplied stays authoritative.
+    let known = add_direct_url(app, &room_id, "known", Some(60.0)).await?;
+    let body = report_duration(app, &room_id, &known, 75.0).await?;
+    assert_eq!(
+        body,
+        serde_json::json!({ "durationSeconds": 60.0 })
+    );
+
+    // Someone outside the room may not report.
+    let stranger = create_user(
+        &harness.pool()?,
+        "stranger",
+        synctv_core::models::UserRole::User,
+    )
+    .await?;
+    let token = harness
+        .state
+        .jwt_service
+        .sign_access_token(&stranger.id, 0)
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    let mut call = Call::keyed(
+        "PUT",
+        format!("/api/rooms/{room_id}/media/{media_id}/duration"),
+    )
+    .json(serde_json::json!({ "durationSeconds": 10.0 }));
+    call.authorization = Some(format!("Bearer {token}"));
+    let (status, body) = send(app, call).await?;
+    assert!(
+        status == StatusCode::FORBIDDEN || status == StatusCode::NOT_FOUND,
+        "{status}: {body}"
     );
     Ok(())
 }

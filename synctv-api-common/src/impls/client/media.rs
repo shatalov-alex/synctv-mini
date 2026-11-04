@@ -1774,6 +1774,31 @@ impl ClientApiImpl {
             .await
     }
 
+    /// A player reported the media's length (`PUT .../media/{mediaId}/duration`).
+    pub async fn report_media_duration(
+        &self,
+        user_id: &UserId,
+        room_id: &str,
+        req: synctv_proto::client::ReportMediaDurationRequest,
+    ) -> Result<synctv_proto::client::ReportMediaDurationResponse, ApiError> {
+        crate::impls::validate_proto_request(&req)?;
+        let rid = self.parse_room_id(room_id)?;
+        let media_id = crate::impls::proto_validated_media_id(req.media_id, &self.public_id_codec)?;
+        let reported = self
+            .room_service
+            .playback_service()
+            .report_media_duration(rid, *user_id, media_id, req.duration_seconds)
+            .await
+            .map_err(ApiError::from)?;
+        if reported.stored {
+            self.room_cache_fanout.publish_invalidation(&rid);
+        }
+        Ok(synctv_proto::client::ReportMediaDurationResponse {
+            stored: reported.stored,
+            duration_seconds: reported.duration_seconds,
+        })
+    }
+
     pub async fn create_media_cover_upload_session(
         &self,
         user_id: &UserId,

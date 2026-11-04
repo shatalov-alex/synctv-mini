@@ -565,6 +565,10 @@ fn register_write_routes() -> Router<AppState> {
             "/api/rooms/{roomId}/playback",
             axum::routing::patch(room::update_playback_state),
         )
+        .route(
+            "/api/rooms/{roomId}/media/{mediaId}/duration",
+            axum::routing::put(room::report_media_duration),
+        )
         .route("/api/rooms/{roomId}/playlists", post(room::create_playlist))
         .route(
             "/api/rooms/{roomId}/playlists/{playlistId}",

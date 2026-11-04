@@ -46,11 +46,11 @@ pub(crate) use lifecycle::{
 pub(crate) use media::{
     __path_add_media, __path_clear_playlist, __path_delete_entries, __path_delete_media,
     __path_edit_media, __path_get_media, __path_get_playlist, __path_list_playlist_items,
-    __path_move_media, __path_push_media_batch,
+    __path_move_media, __path_push_media_batch, __path_report_media_duration,
 };
 pub(crate) use media::{
     add_media, clear_playlist, delete_entries, delete_media, edit_media, get_media, get_playlist,
-    list_playlist_items, move_media, push_media_batch,
+    list_playlist_items, move_media, push_media_batch, report_media_duration,
 };
 #[cfg(feature = "openapi")]
 pub(crate) use members::__path_get_room_members;
