@@ -1624,6 +1624,21 @@ message UpdateRoomSettingsRequest {
   google.protobuf.FieldMask update_mask = 2 [(buf.validate.field).required = true];
 }
 
+// HTTP API: PATCH /api/rooms/{room_id}/name (members who manage room settings)
+message RenameRoomRequest {
+  string name = 1 [
+    (buf.validate.field).string = {
+      min_len: 1
+      max_len: 100
+    },
+    (buf.validate.field).cel = {
+      id: "rename_room.name.no_angle_brackets"
+      message: "name must not contain HTML-like tags"
+      expression: "!this.contains('<') && !this.contains('>')"
+    }
+  ];
+}
+
 message UpdateRoomVisibilityRequest {
   bool is_public = 1;
 }

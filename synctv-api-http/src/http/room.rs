@@ -111,13 +111,14 @@ pub(crate) use report::{
 #[cfg(feature = "openapi")]
 pub(crate) use settings::{
     __path_clear_room_password, __path_finish_room_password_login,
-    __path_finish_room_password_registration, __path_get_room_settings, __path_reset_room_settings,
-    __path_start_room_password_login, __path_start_room_password_registration,
-    __path_transfer_room_ownership, __path_update_room_settings, __path_update_room_visibility,
+    __path_finish_room_password_registration, __path_get_room_settings, __path_rename_room,
+    __path_reset_room_settings, __path_start_room_password_login,
+    __path_start_room_password_registration, __path_transfer_room_ownership,
+    __path_update_room_settings, __path_update_room_visibility,
 };
 pub(crate) use settings::{
     clear_room_password, finish_room_password_login, finish_room_password_registration,
-    get_room_settings, reset_room_settings, start_room_password_login,
+    get_room_settings, rename_room, reset_room_settings, start_room_password_login,
     start_room_password_registration, transfer_room_ownership, update_room_settings,
     update_room_visibility,
 };

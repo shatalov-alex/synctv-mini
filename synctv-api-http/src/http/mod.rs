@@ -526,6 +526,10 @@ fn register_write_routes() -> Router<AppState> {
             axum::routing::patch(room::update_room_visibility),
         )
         .route(
+            "/api/rooms/{roomId}/name",
+            axum::routing::patch(room::rename_room),
+        )
+        .route(
             "/api/rooms/{roomId}/owner",
             post(room::transfer_room_ownership),
         )

@@ -743,3 +743,54 @@ async fn timeline_is_for_the_service_key_and_admins_only() -> TestResult {
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     Ok(())
 }
+
+#[tokio::test]
+#[ignore = "Requires Docker-backed PostgreSQL"]
+async fn rooms_can_be_renamed_by_their_managers() -> TestResult {
+    let harness = Box::pin(setup(runtime_settings(
+        ServiceApiActAs::TelegramAdmin,
+        TELEGRAM_ADMIN_ID,
+    )?))
+    .await?;
+    let app = &harness.app;
+    let room_id = create_room(app, "Old name").await?;
+    let (status, room) = send(
+        app,
+        Call::keyed("PATCH", format!("/api/rooms/{room_id}/name"))
+            .json(serde_json::json!({ "name": "Movie night" })),
+    )
+    .await?;
+    assert_eq!(status, StatusCode::OK, "{room}");
+    assert_eq!(str_field(&room, "/name")?, "Movie night");
+    let (_, fetched) = send(app, Call::keyed("GET", format!("/api/rooms/{room_id}"))).await?;
+    assert!(fetched.to_string().contains("Movie night"), "{fetched}");
+
+    let (status, body) = send(
+        app,
+        Call::keyed("PATCH", format!("/api/rooms/{room_id}/name"))
+            .json(serde_json::json!({ "name": "<b>x</b>" })),
+    )
+    .await?;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+
+    let stranger = create_user(
+        &harness.pool()?,
+        "rename_stranger",
+        synctv_core::models::UserRole::User,
+    )
+    .await?;
+    let token = harness
+        .state
+        .jwt_service
+        .sign_access_token(&stranger.id, 0)
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    let mut call = Call::keyed("PATCH", format!("/api/rooms/{room_id}/name"))
+        .json(serde_json::json!({ "name": "Hijacked" }));
+    call.authorization = Some(format!("Bearer {token}"));
+    let (status, body) = send(app, call).await?;
+    assert!(
+        status == StatusCode::FORBIDDEN || status == StatusCode::NOT_FOUND,
+        "{status}: {body}"
+    );
+    Ok(())
+}

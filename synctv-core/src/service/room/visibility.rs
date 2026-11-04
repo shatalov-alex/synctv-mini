@@ -21,6 +21,42 @@ impl RoomService {
             .await
     }
 
+    /// Rename the room (members who may manage room settings: the creator and room admins).
+    pub async fn rename_room(
+        &self,
+        room_id: &RoomId,
+        user_id: &UserId,
+        name: &str,
+    ) -> Result<Room> {
+        self.permission_service
+            .check_permission_no_cache(room_id, user_id, RoomPermission::MANAGE_ROOM_SETTINGS)
+            .await?;
+        let name = crate::validation::validate_room_name_input(name)
+            .map_err(|error| Error::InvalidInput(error.to_string()))?;
+
+        let mut tx = self.pool.begin().await?;
+        let mut room = self
+            .room_repo
+            .get_by_id_for_update_with_executor(room_id, &mut *tx)
+            .await?
+            .ok_or_else(|| Error::NotFound("Room not found".to_string()))?;
+        if room.name == name {
+            tx.commit().await?;
+            return Ok(room);
+        }
+        let old_version = room.version;
+        room.name = name;
+        let category_id = room.category.as_ref().map(|category| category.id);
+        let updated = self
+            .room_repo
+            .update_with_taxonomy_executor(&room, category_id, old_version, &mut *tx)
+            .await?;
+        tx.commit().await?;
+
+        self.notify_room_invalidation(room_id).await;
+        Ok(updated)
+    }
+
     /// Update visibility from an already authenticated management/system plane.
     pub async fn admin_update_room_visibility(
         &self,

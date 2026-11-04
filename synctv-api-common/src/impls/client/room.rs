@@ -1867,6 +1867,34 @@ impl ClientApiImpl {
         .await
     }
 
+    pub async fn rename_room(
+        &self,
+        user_id: &UserId,
+        room_id: &str,
+        req: synctv_proto::client::RenameRoomRequest,
+    ) -> Result<synctv_proto::client::Room, ApiError> {
+        crate::impls::validate_proto_request(&req)?;
+        let rid = self.parse_room_id(room_id)?;
+        let room = self
+            .room_service
+            .rename_room(&rid, user_id, &req.name)
+            .await
+            .map_err(ApiError::from)?;
+        self.room_cache_fanout.publish_invalidation(&rid);
+
+        let settings = self
+            .room_service
+            .get_room_settings(&rid)
+            .await
+            .map_err(ApiError::from)?;
+        self.room_to_proto_basic_with_loaded_cover(
+            &room,
+            Some(&settings),
+            self.load_room_member_count(&rid).await?,
+        )
+        .await
+    }
+
     pub async fn start_room_password_registration(
         &self,
         user_id: &UserId,
