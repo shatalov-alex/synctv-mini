@@ -794,3 +794,118 @@ async fn rooms_can_be_renamed_by_their_managers() -> TestResult {
     );
     Ok(())
 }
+
+/// The request sequence `docs/service-api.md` shows, end to end with the key. Run with
+/// `--nocapture` to see the responses the doc's examples are based on.
+#[tokio::test]
+#[ignore = "Requires Docker-backed PostgreSQL"]
+async fn documented_service_api_flow_works() -> TestResult {
+    let harness = Box::pin(setup(runtime_settings(
+        ServiceApiActAs::TelegramAdmin,
+        TELEGRAM_ADMIN_ID,
+    )?))
+    .await?;
+    let app = &harness.app;
+    let step = |label: &str, status: StatusCode, body: &serde_json::Value| {
+        println!("== {label}: {status}\n{body:#}");
+        status
+    };
+
+    let (status, room) = send(
+        app,
+        Call::keyed("POST", "/api/rooms").json(serde_json::json!({ "name": "Movie night" })),
+    )
+    .await?;
+    assert_eq!(step("create room", status, &room), StatusCode::OK);
+    let room_id = str_field(&room, "/id")?.to_string();
+
+    let (status, body) = send(
+        app,
+        Call::keyed("PATCH", format!("/api/rooms/{room_id}/name"))
+            .json(serde_json::json!({ "name": "Friday movie night" })),
+    )
+    .await?;
+    assert_eq!(step("rename", status, &body), StatusCode::OK);
+
+    let mut media_ids = Vec::new();
+    for (name, url) in [
+        ("Part 1", "https://cdn.example.com/part1.mp4"),
+        ("Part 2", "https://cdn.example.com/part2.mp4"),
+    ] {
+        let (status, media) = send(
+            app,
+            Call::keyed("POST", format!("/api/rooms/{room_id}/media")).json(serde_json::json!({
+                "name": name,
+                "sourceConfig": { "directUrl": { "medias": [{ "url": url }], "proxyMode": 2 } }
+            })),
+        )
+        .await?;
+        assert_eq!(step("add media", status, &media), StatusCode::OK);
+        media_ids.push(str_field(&media, "/id")?.to_string());
+    }
+
+    let (status, list) = send(
+        app,
+        Call::keyed("POST", format!("/api/rooms/{room_id}/media/list"))
+            .json(serde_json::json!({ "pageSize": 100 })),
+    )
+    .await?;
+    assert_eq!(step("list", status, &list), StatusCode::OK);
+
+    // Reorder: put Part 2 before Part 1.
+    let (status, moved) = send(
+        app,
+        Call::keyed("POST", format!("/api/rooms/{room_id}/media/move")).json(serde_json::json!({
+            "mediaIds": [media_ids[1]],
+            "beforeMediaId": media_ids[0]
+        })),
+    )
+    .await?;
+    assert_eq!(step("move", status, &moved), StatusCode::OK);
+    let (_, list) = send(
+        app,
+        Call::keyed("POST", format!("/api/rooms/{room_id}/media/list"))
+            .json(serde_json::json!({ "pageSize": 100 })),
+    )
+    .await?;
+    assert_eq!(str_field(&list, "/media/0/id")?, media_ids[1], "{list}");
+
+    let (status, started) = send(
+        app,
+        Call::keyed("POST", format!("/api/rooms/{room_id}/playback/start"))
+            .json(serde_json::json!({ "mediaId": media_ids[1] })),
+    )
+    .await?;
+    assert_eq!(step("start", status, &started), StatusCode::OK);
+    let (status, next) = send(
+        app,
+        Call::keyed("POST", format!("/api/rooms/{room_id}/playback/next"))
+            .json(serde_json::json!({})),
+    )
+    .await?;
+    assert_eq!(step("next", status, &next), StatusCode::OK);
+    let (status, timeline) = send(
+        app,
+        Call::keyed("GET", format!("/api/service/rooms/{room_id}/timeline")),
+    )
+    .await?;
+    assert_eq!(step("room timeline", status, &timeline), StatusCode::OK);
+    assert_eq!(
+        str_field(&timeline, "/mediaId")?,
+        media_ids[0],
+        "next went to Part 1"
+    );
+
+    let (status, body) = send(
+        app,
+        Call::keyed(
+            "DELETE",
+            format!("/api/rooms/{room_id}/media/{}", media_ids[1]),
+        ),
+    )
+    .await?;
+    assert_eq!(step("delete media", status, &body), StatusCode::OK);
+    let (status, body) = send(app, Call::keyed("DELETE", format!("/api/rooms/{room_id}"))).await?;
+    assert_eq!(step("delete room", status, &body), StatusCode::OK);
+    Ok(())
+}
