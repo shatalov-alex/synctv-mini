@@ -5,7 +5,10 @@ use synctv_core::{
 
 use crate::playback_fanout::PlaybackFanoutActor;
 
-use super::StreamMessageHandler;
+use super::{
+    playback_gate::{DeviceReport, GateAction, RoomView},
+    StreamMessageHandler,
+};
 
 impl StreamMessageHandler {
     pub async fn handle_playback_source_update(
@@ -135,5 +138,115 @@ impl StreamMessageHandler {
             .await;
 
         Ok(())
+    }
+
+    pub async fn handle_player_status(
+        &self,
+        report: &synctv_proto::client::PlayerStatusReport,
+    ) -> Result<(), String> {
+        crate::impls::validate_proto_request(report).map_err(|error| error.to_string())?;
+        self.playback_gate.report(
+            &self.room_id,
+            self.connection_id.as_str(),
+            DeviceReport {
+                media_id: report.media_id.clone(),
+                participating: report.participating,
+                ready: report.ready,
+                position: report.position,
+                state_version: report.state_version,
+            },
+            std::time::Instant::now(),
+        );
+        let (waiting_devices, holding) = self.evaluate_playback_gate().await;
+        self.sender.send(synctv_proto::client::ServerMessage {
+            message: Some(synctv_proto::client::server_message::Message::PlaybackGate(
+                synctv_proto::client::PlaybackGateStatus {
+                    waiting_devices,
+                    holding,
+                },
+            )),
+        })
+    }
+
+    pub(super) async fn leave_playback_gate(&self) {
+        self.playback_gate
+            .remove(&self.room_id, self.connection_id.as_str());
+        self.evaluate_playback_gate().await;
+    }
+
+    /// Lets the gate pause or resume the room. Failures are only logged: the next report retries.
+    async fn evaluate_playback_gate(&self) -> (u32, bool) {
+        let state = match self
+            .room_service
+            .playback_service()
+            .get_state(&self.room_id)
+            .await
+        {
+            Ok(state) => state,
+            Err(error) => {
+                tracing::warn!(error = %error, "Playback gate could not load the room state");
+                return (0, false);
+            }
+        };
+        let media_id = state
+            .playing_media_id
+            .and_then(|id| self.public_id_codec.encode_media_id(id).ok())
+            .unwrap_or_default();
+        let view = RoomView {
+            media_id: &media_id,
+            playing: state.is_playing,
+            position: state.computed_position_at(self.clock.now()),
+            version: state.version,
+        };
+        let decision = self
+            .playback_gate
+            .decide(&self.room_id, &view, std::time::Instant::now());
+        if let Some(action) = decision.action {
+            let new_version = self.apply_playback_gate_action(action, &state).await;
+            self.playback_gate
+                .finish_action(&self.room_id, action, new_version);
+        }
+        (decision.waiting_devices, decision.holding)
+    }
+
+    async fn apply_playback_gate_action(
+        &self,
+        action: GateAction,
+        previous_state: &synctv_core::models::RoomPlaybackState,
+    ) -> Option<i64> {
+        // Reporting needs no playback permission; only the room's own hold and resume happen here.
+        let user_id = self.principal.user_id()?;
+        let (playing, position) = match action {
+            GateAction::Hold { position } => (false, position),
+            GateAction::Resume { position } => (true, position),
+        };
+        let prepared_fanout = self
+            .playback_fanout
+            .prepare_state_changed_outbox_fanout(PlaybackFanoutActor::new(user_id, &self.username));
+        let request = PlaybackStateUpdateRequest::new(
+            self.room_id,
+            user_id,
+            PlaybackStatePatch::new(Some(playing), Some(position), None),
+        )
+        .with_expected_version(Some(previous_state.version))
+        .with_outbox(Some(prepared_fanout.outbox_factory()));
+        match self
+            .room_service
+            .playback_service()
+            .update_playback_state(request)
+            .await
+        {
+            Ok(state) => {
+                prepared_fanout.publish_after_outbox_commit();
+                self.playback_service
+                    .handle_provider_lifecycle_transition(Some(previous_state), &state)
+                    .await;
+                Some(state.version)
+            }
+            Err(error) => {
+                tracing::debug!(error = %error, "Playback gate update did not apply");
+                None
+            }
+        }
     }
 }

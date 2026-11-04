@@ -882,6 +882,7 @@ const fn message_type_name(message: &ServerMessage) -> &'static str {
         Some(Message::ResourceEvent(_)) => "ResourceEvent",
         Some(Message::ResourceObserveError(_)) => "ResourceObserveError",
         Some(Message::Notification(_)) => "Notification",
+        Some(Message::PlaybackGate(_)) => "PlaybackGate",
         None => "None",
     }
 }
@@ -1344,6 +1345,7 @@ async fn handle_socket(
                 .webrtc
                 .filter_private_ice_candidates,
             swarm_signing_key: state.shared_api_runtime.media_swarm_signing_key.clone(),
+            playback_gate: state.shared_api_runtime.client_api.playback_gate.clone(),
             media_swarm_tracker: state
                 .shared_api_runtime
                 .client_api

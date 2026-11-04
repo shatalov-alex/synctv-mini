@@ -144,7 +144,9 @@ mod transport;
 pub use transport::{MessageSender, StreamMessage};
 
 mod media_swarm_tracker;
+mod playback_gate;
 pub use media_swarm_tracker::{MediaSwarmPeer, MediaSwarmTracker};
+pub use playback_gate::PlaybackGate;
 
 mod notifications;
 use notifications::{system_notification_server_message, user_notification_server_message};
@@ -186,6 +188,7 @@ pub struct StreamMessageHandler {
     public_id_codec: Arc<synctv_adapter::PublicIdCodec>,
     swarm_signing_key: Arc<crate::proxy_signature::MediaSwarmSigningKey>,
     media_swarm_tracker: Arc<MediaSwarmTracker>,
+    playback_gate: Arc<PlaybackGate>,
     runtime_settings_store: Option<Arc<synctv_core::service::RuntimeSettingsStore>>,
     sender: Arc<dyn MessageSender>,
     playback_service: Arc<dyn PlaybackService>,
@@ -268,6 +271,7 @@ pub struct StreamMessageHandlerRuntime {
     pub filter_private_ice_candidates: bool,
     pub swarm_signing_key: Arc<crate::proxy_signature::MediaSwarmSigningKey>,
     pub media_swarm_tracker: Arc<MediaSwarmTracker>,
+    pub playback_gate: Arc<PlaybackGate>,
     pub runtime_settings_store: Option<Arc<synctv_core::service::RuntimeSettingsStore>>,
 }
 
@@ -303,6 +307,7 @@ impl StreamMessageHandlerRuntime {
                 .expect("test swarm signing key"),
             ),
             media_swarm_tracker: Arc::new(MediaSwarmTracker::new(None, "test:")),
+            playback_gate: Arc::new(PlaybackGate::new()),
             runtime_settings_store: None,
         }
     }
@@ -330,6 +335,7 @@ impl Clone for StreamMessageHandler {
             public_id_codec: Arc::clone(&self.public_id_codec),
             swarm_signing_key: Arc::clone(&self.swarm_signing_key),
             media_swarm_tracker: Arc::clone(&self.media_swarm_tracker),
+            playback_gate: Arc::clone(&self.playback_gate),
             runtime_settings_store: self.runtime_settings_store.clone(),
             sender: Arc::clone(&self.sender),
             playback_service: self.playback_service.clone(),
@@ -540,6 +546,7 @@ impl StreamMessageHandler {
             public_id_codec,
             swarm_signing_key: runtime.swarm_signing_key,
             media_swarm_tracker: runtime.media_swarm_tracker,
+            playback_gate: runtime.playback_gate,
             runtime_settings_store: runtime.runtime_settings_store,
             sender,
             playback_service: runtime.playback_service,
@@ -1971,6 +1978,7 @@ impl StreamMessageHandler {
     async fn cleanup(&self, room_id: &str) {
         self.resource_observer.clear_observations().await;
         self.leave_all_media_swarms().await;
+        self.leave_playback_gate().await;
         let actor = match self.realtime_actor() {
             Ok(actor) => actor,
             Err(error) => {
@@ -2848,6 +2856,9 @@ impl StreamMessageHandler {
             }
             Some(Message::PlaybackStateUpdate(update)) => {
                 self.handle_playback_state_update(update).await?;
+            }
+            Some(Message::PlayerStatus(report)) => {
+                self.handle_player_status(report).await?;
             }
             Some(Message::ObserveResource(observe)) => {
                 self.ensure_observe_resource_allowed(observe).await?;

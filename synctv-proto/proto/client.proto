@@ -3390,7 +3390,29 @@ message ClientMessage {
     ObserveResource observe_resource = 5;
     UnobserveResource unobserve_resource = 6;
     WebRTCCommand webrtc = 7;
+    // The sender's player status, for holding the room while a device isn't ready.
+    PlayerStatusReport player_status = 8;
   }
+}
+
+message PlayerStatusReport {
+  string media_id = 1 [(buf.validate.field).string.max_len = 128];
+  // False when this device doesn't play the room: remote mode, background, failed player.
+  bool participating = 2;
+  // The player has enough of the video to play at its position.
+  bool ready = 3;
+  // Player position in seconds, once it has caught up with the room.
+  optional double position = 4;
+  // Version of the room state the player has applied.
+  int64 state_version = 5;
+}
+
+// Reply to PlayerStatusReport.
+message PlaybackGateStatus {
+  // Devices the room is waiting for.
+  uint32 waiting_devices = 1;
+  // The room is paused until those devices are ready and will resume by itself.
+  bool holding = 2;
 }
 
 enum ResourceDeliveryMode {
@@ -3619,6 +3641,7 @@ message ServerMessage {
     // Clients can classify an intentional server-side disconnect without
     // relying on the transport close frame or a localized error string.
     RealtimeTermination termination = 32;
+    PlaybackGateStatus playback_gate = 33;
   }
 }
 
