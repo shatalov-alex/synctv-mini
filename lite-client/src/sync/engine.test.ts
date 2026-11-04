@@ -50,6 +50,7 @@ function fakePlayer() {
     muted: false,
     currentSource: null as unknown,
     buffering: false,
+    seeking: false,
     readyState: 4,
     bufferedAhead: 30,
     listeners: [] as Array<(e: { type: string }) => void>,
@@ -751,5 +752,53 @@ describe('RoomSyncEngine device status', () => {
     player.emit('loadedmetadata');
     await vi.advanceTimersByTimeAsync(10);
     expect(player.calls).toContain('play');
+  });
+
+  async function playingAt100() {
+    const ctx = await ready();
+    await ctx.pushAll({ playing: true, position: 100 });
+    await vi.advanceTimersByTimeAsync(900);
+    ctx.player.currentTime = 101;
+    await vi.advanceTimersByTimeAsync(1100);
+    return ctx;
+  }
+
+  it('a room seek to an unbuffered part reports not ready at once', async () => {
+    const { ws, player } = await playingAt100();
+    player.bufferedAhead = 0;
+    player.readyState = 1;
+    ws.push(stateEvent(state({ isPlaying: true, position: 500, version: '2' })));
+    await flush();
+    expect(last(ws)).toMatchObject({ ready: false, stateVersion: '2' });
+    player.readyState = 4;
+    await vi.advanceTimersByTimeAsync(900);
+    player.currentTime = 502; // keeping up with the room at the next check
+    await vi.advanceTimersByTimeAsync(1100);
+    expect(last(ws)).toMatchObject({ ready: true });
+  });
+
+  it('its own seek to an unbuffered part reports not ready at once', async () => {
+    const { ws, player, engine } = await playingAt100();
+    player.bufferedAhead = 0;
+    player.seeking = true; // a browser reports this as soon as the seek starts
+    engine.seek(500);
+    expect(last(ws)).toMatchObject({ ready: false });
+  });
+
+  it('a seek inside the buffer holds nobody', async () => {
+    const { ws, player } = await playingAt100();
+    player.bufferedAhead = 20;
+    ws.push(stateEvent(state({ isPlaying: true, position: 110, version: '2' })));
+    await flush();
+    expect(last(ws)).toMatchObject({ ready: true });
+  });
+
+  it('a small correction holds nobody, even with little buffered', async () => {
+    const { ws, player } = await playingAt100();
+    player.bufferedAhead = 1;
+    player.readyState = 3;
+    ws.push(stateEvent(state({ isPlaying: true, position: player.currentTime + 0.5, version: '2' })));
+    await flush();
+    expect(last(ws)).toMatchObject({ ready: true });
   });
 });

@@ -17,6 +17,8 @@ use synctv_core::models::RoomId;
 const REPORT_STALE_AFTER: Duration = Duration::from_secs(10);
 /// A device that can't load for this long stops holding the room until it reports ready again.
 const MAX_WAIT_FOR_DEVICE: Duration = Duration::from_secs(45);
+/// During a hold, a change of the room this small is a pause; a bigger one is a seek.
+const SEEK_DISTANCE_SECS: f64 = 1.0;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeviceReport {
@@ -58,11 +60,17 @@ struct Device {
     given_up: bool,
 }
 
+/// The room state a hold left. A newer version means someone else changed the room.
+#[derive(Debug, Clone, Copy)]
+struct Hold {
+    version: i64,
+    position: f64,
+}
+
 #[derive(Debug, Default)]
 struct RoomGate {
     devices: HashMap<String, Device>,
-    /// Room version our last pause produced. Another version means someone else moved the room.
-    hold_version: Option<i64>,
+    hold: Option<Hold>,
     applying: bool,
 }
 
@@ -70,7 +78,7 @@ impl RoomGate {
     fn refresh_devices(&mut self, view: &RoomView<'_>, now: Instant) -> u32 {
         self.devices
             .retain(|_, device| now.duration_since(device.last_seen) < REPORT_STALE_AFTER);
-        let counting = view.playing || self.hold_version.is_some();
+        let counting = view.playing || self.hold.is_some();
         let mut waiting = 0;
         for device in self.devices.values_mut() {
             let blocking = device.report.participating
@@ -162,15 +170,18 @@ impl PlaybackGate {
             };
         };
         if view.media_id.is_empty() {
-            room.hold_version = None;
+            room.hold = None;
         }
         let waiting = room.refresh_devices(view, now);
-        if !view.playing
-            && room
-                .hold_version
-                .is_some_and(|version| version != view.version)
+        if let Some(hold) = room
+            .hold
+            .filter(|hold| !view.playing && hold.version != view.version)
         {
-            room.hold_version = None; // someone paused or seeked: they own the room now
+            room.hold =
+                ((view.position - hold.position).abs() > SEEK_DISTANCE_SECS).then_some(Hold {
+                    version: view.version,
+                    position: view.position,
+                }); // a seek keeps waiting; a pause means someone took over
         }
         let action = if room.applying || view.media_id.is_empty() {
             None
@@ -179,9 +190,9 @@ impl PlaybackGate {
                 position: room.lowest_position(view),
             })
         } else if view.playing {
-            room.hold_version = None; // someone pressed play and everyone is ready
+            room.hold = None; // someone pressed play and everyone is ready
             None
-        } else if room.hold_version.is_some() && waiting == 0 {
+        } else if room.hold.is_some() && waiting == 0 {
             Some(GateAction::Resume {
                 position: view.position,
             })
@@ -192,7 +203,7 @@ impl PlaybackGate {
         GateDecision {
             action,
             waiting_devices: waiting,
-            holding: room.hold_version.is_some() || matches!(action, Some(GateAction::Hold { .. })),
+            holding: room.hold.is_some() || matches!(action, Some(GateAction::Hold { .. })),
         }
     }
 
@@ -206,8 +217,8 @@ impl PlaybackGate {
         let Some(version) = new_version else {
             return;
         };
-        room.hold_version = match action {
-            GateAction::Hold { .. } => Some(version),
+        room.hold = match action {
+            GateAction::Hold { position } => Some(Hold { version, position }),
             GateAction::Resume { .. } => None,
         };
     }
@@ -340,6 +351,47 @@ mod tests {
         let decision = gate.decide(&room(), &view(false, 10.0, paused_by_user), now);
         assert_eq!(decision.action, None);
         assert!(!decision.holding);
+    }
+
+    #[test]
+    fn seeking_during_a_hold_keeps_waiting_at_the_new_position() {
+        let gate = PlaybackGate::new();
+        let now = Instant::now();
+        gate.report(&room(), "tv", report(false, None, 5), now);
+        let version = apply(&gate, gate.decide(&room(), &view(true, 10.0, 5), now), 5);
+
+        let seeked = version + 1;
+        let decision = gate.decide(&room(), &view(false, 20.0, seeked), now);
+        assert_eq!(decision.action, None);
+        assert!(decision.holding);
+
+        // And again: this is what pressing +10 twice looks like.
+        let seeked = seeked + 1;
+        assert!(
+            gate.decide(&room(), &view(false, 30.0, seeked), now)
+                .holding
+        );
+
+        gate.report(&room(), "tv", report(true, Some(30.0), seeked), now);
+        let decision = gate.decide(&room(), &view(false, 30.0, seeked), now);
+        assert_eq!(decision.action, Some(GateAction::Resume { position: 30.0 }));
+    }
+
+    #[test]
+    fn pausing_after_a_seek_during_a_hold_still_cancels_the_resume() {
+        let gate = PlaybackGate::new();
+        let now = Instant::now();
+        gate.report(&room(), "tv", report(false, None, 5), now);
+        let version = apply(&gate, gate.decide(&room(), &view(true, 10.0, 5), now), 5);
+        assert!(
+            gate.decide(&room(), &view(false, 20.0, version + 1), now)
+                .holding
+        );
+        assert!(
+            !gate
+                .decide(&room(), &view(false, 20.2, version + 2), now)
+                .holding
+        );
     }
 
     #[test]
