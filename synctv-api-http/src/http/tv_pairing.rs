@@ -137,7 +137,7 @@ pub async fn claim_tv_pairing(
     Ok(Json(resp))
 }
 
-/// List the TVs paired to the room (room creator only).
+/// List the TVs paired to the room (room members, except the TVs themselves).
 #[cfg_attr(
     feature = "openapi",
     utoipa::path(
@@ -147,7 +147,7 @@ pub async fn claim_tv_pairing(
         params(("roomId" = String, Path, description = "Room ID")),
         responses(
             (status = 200, description = "Paired TVs", body = ListTvDevicesResponse),
-            (status = 403, description = "Not the room creator", body = crate::openapi::GoogleRpcStatusSchema)
+            (status = 403, description = "Not a member of the room, or a TV", body = crate::openapi::GoogleRpcStatusSchema)
         ),
         security(("bearer_auth" = []))
     )

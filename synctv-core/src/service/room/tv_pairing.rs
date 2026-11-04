@@ -276,14 +276,27 @@ impl RoomService {
         Ok(())
     }
 
-    /// Live TVs paired to the room (room creator only).
+    /// Live TVs paired to the room, for its people: a phone can only be the remote of a TV
+    /// that exists. Not for the TVs themselves, and only the creator manages them.
     pub async fn list_tv_devices(
         &self,
         room_id: RoomId,
         actor_id: UserId,
     ) -> Result<Vec<TvDeviceSummary>> {
-        self.ensure_tv_manager(&room_id, &actor_id).await?;
-        self.tv_devices().list_active_for_room(&room_id).await
+        let tvs = self.tv_devices().list_active_for_room(&room_id).await?;
+        let room = self
+            .room_repo
+            .get_by_id(&room_id)
+            .await?
+            .ok_or_else(|| Error::NotFound("Room not found".to_string()))?;
+        let is_member = self.get_member(&room_id, &actor_id).await?.is_some();
+        let is_tv = tvs.iter().any(|tv| tv.user_id == actor_id);
+        if is_tv || !(is_member || room.created_by == actor_id) {
+            return Err(Error::Authorization(
+                "Only the people in the room can list its TVs".to_string(),
+            ));
+        }
+        Ok(tvs)
     }
 
     /// Revoke a paired TV's credentials (room creator only): its refresh tokens stop working.

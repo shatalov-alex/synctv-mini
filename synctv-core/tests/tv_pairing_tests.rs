@@ -190,7 +190,33 @@ async fn claimed_pairing_delivers_tokens_once_to_a_restricted_room_member() {
         .await
         .checked("TV refresh should work while paired");
 
-    // Listed for the creator, hidden from others.
+    // Listed for the room's people, hidden from outsiders and the TV itself.
+    let viewer = f
+        .users
+        .find_or_create_telegram_user(&telegram_user(7, "Viewer"))
+        .await
+        .checked("viewer should be created");
+    f.rooms
+        .add_member(f.room.id, f.creator.id, viewer.id, RoomRole::Member, false)
+        .await
+        .checked("viewer should join");
+    assert_eq!(
+        f.rooms
+            .list_tv_devices(f.room.id, viewer.id)
+            .await
+            .checked("a member can list")
+            .len(),
+        1
+    );
+    let outsider = f
+        .users
+        .find_or_create_telegram_user(&telegram_user(8, "Outsider"))
+        .await
+        .checked("outsider should be created");
+    assert!(matches!(
+        f.rooms.list_tv_devices(f.room.id, outsider.id).await,
+        Err(Error::Authorization(_))
+    ));
     let tvs = f
         .rooms
         .list_tv_devices(f.room.id, f.creator.id)
