@@ -233,9 +233,16 @@ select {
   white-space: pre-line;
   color: #fff;
   font-size: clamp(14px, 4.2vw, 28px);
-  line-height: 1.25;
-  text-shadow: 0 0 3px #000, 0 1px 3px #000, 0 0 1px #000;
+  line-height: 1.4;
   pointer-events: none;
+}
+.subtitle-line span,
+.tv-subtitle-line span {
+  background: rgba(0, 0, 0, 0.6);
+  padding: 0.1em 0.4em;
+  border-radius: 4px;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
 }
 .subtitle-toggle {
   min-width: 40px;
@@ -394,8 +401,7 @@ html.tv-mode body {
   text-align: center;
   white-space: pre-line;
   font-size: 40px;
-  line-height: 1.25;
-  text-shadow: 0 0 4px #000, 0 2px 4px #000, 0 0 2px #000;
+  line-height: 1.4;
 }
 .tv-subtitle-line.raised {
   bottom: 22%;

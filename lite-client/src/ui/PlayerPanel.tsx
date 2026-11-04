@@ -152,7 +152,11 @@ export function PlayerPanel({
     <div class={fullscreen.on ? (idle ? 'player max idle' : 'player max') : 'player'} ref={setContainer}>
       <div class="player-stage" onClick={onStageTap}>
         <video ref={videoRef} class="video" playsInline />
-        {subtitleText && <div class="subtitle-line">{subtitleText}</div>}
+        {subtitleText && (
+          <div class="subtitle-line">
+            <span>{subtitleText}</span>
+          </div>
+        )}
         {remote && (
           <div class="player-remote">
             <div class="player-remote-icon">📺</div>
@@ -280,6 +284,7 @@ export function PlayerPanel({
         )}
         {snapshot && snapshot.waitingDevices > 0 && <div class="small">{waitingText(snapshot.waitingDevices)}</div>}
         {subtitles.failed && <div class="small">These subtitles could not be loaded</div>}
+        {subtitles.tvChoiceFailed && <div class="error small">Could not change the TV's subtitles</div>}
         {snapshot && snapshot.error && <div class="error small">{snapshot.error}</div>}
       </div>
     </div>

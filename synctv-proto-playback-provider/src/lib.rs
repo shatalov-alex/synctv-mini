@@ -395,6 +395,7 @@ mod tests {
             chat_enabled: true,
             voice_chat_enabled: true,
             p2p_media_enabled: true,
+            tv_subtitles: None,
             auto_play: Some(crate::client::AutoPlaySettings {
                 enabled: true,
                 mode: crate::client::PlayMode::Sequential as i32,

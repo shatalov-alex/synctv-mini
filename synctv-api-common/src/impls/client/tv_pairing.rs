@@ -120,6 +120,41 @@ impl ClientApiImpl {
         Ok(proto::ListTvDevicesResponse { tvs })
     }
 
+    /// What the room's TVs show: for the remote, and the TV's own key.
+    pub async fn set_tv_subtitles(
+        &self,
+        user_id: &UserId,
+        room_id: &str,
+        req: proto::SetTvSubtitlesRequest,
+    ) -> Result<proto::SetTvSubtitlesResponse, ApiError> {
+        crate::impls::validate_proto_request(&req)?;
+        let rid = self.parse_room_id(room_id)?;
+        let username = self.user_username_for_event(user_id).await?;
+        let prepared = self
+            .room_settings_fanout
+            .prepare_settings_changed(&rid, user_id, &username)?;
+        let snapshot = self
+            .room_service
+            .set_tv_subtitles_with_outbox(
+                rid,
+                *user_id,
+                synctv_core::models::room_settings::TvSubtitles {
+                    enabled: req.enabled,
+                    track: req.track,
+                },
+                Some(prepared.settings_outbox_factory()),
+            )
+            .await
+            .map_err(Self::map_room_access_error)?;
+        let prepared = prepared
+            .with_settings_and_version(&snapshot.settings, snapshot.version)
+            .map_err(ApiError::from)?;
+        self.room_settings_fanout
+            .publish_prepared_after_outbox_commit(prepared);
+        self.room_cache_fanout.publish_invalidation(&rid);
+        Ok(proto::SetTvSubtitlesResponse {})
+    }
+
     /// Unpair a TV: revoke its credentials (refresh fails from now on), then kick it from the
     /// room with the usual realtime fan-out and disconnect.
     pub async fn revoke_tv_device(

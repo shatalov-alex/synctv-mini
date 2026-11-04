@@ -97,6 +97,8 @@ export interface RoomSyncEngineOptions {
   remote?: boolean;
   /** Keep the playlist, autoplay and member changes current; for pages that show them. */
   roomDetails?: boolean;
+  /** Only the room's settings, for a TV, which has no use for the rest of `roomDetails`. */
+  roomSettings?: boolean;
 }
 
 export class RoomSyncEngine implements SyncEngine {
@@ -119,6 +121,7 @@ export class RoomSyncEngine implements SyncEngine {
     waitingDevices: 0,
     playlist: null,
     autoPlay: null,
+    tvSubtitles: null,
     memberChanges: 0,
   };
 
@@ -149,6 +152,7 @@ export class RoomSyncEngine implements SyncEngine {
   private readonly origin: string;
   private readonly freeMode: boolean;
   private readonly observesRoomDetails: boolean;
+  private readonly observesRoomSettings: boolean;
   private readonly unsubscribePlayer: () => void;
   private hiddenAt = 0;
   /** A forced seek+play is waiting for playback to actually start (see settle()). */
@@ -177,6 +181,7 @@ export class RoomSyncEngine implements SyncEngine {
     this.origin = options.origin || location.origin;
     this.freeMode = !!options.freeMode;
     this.observesRoomDetails = !!options.roomDetails;
+    this.observesRoomSettings = !!options.roomSettings;
     if (options.remote) {
       this.snap = { ...this.snap, remote: true };
       player.setPreload('metadata');
@@ -737,6 +742,10 @@ export class RoomSyncEngine implements SyncEngine {
       this.update({ playlist: msg.media });
     } else if (msg.kind === 'settings') {
       if (msg.autoPlay !== this.snap.autoPlay) this.update({ autoPlay: msg.autoPlay });
+      const tv = this.snap.tvSubtitles;
+      if (!tv || tv.enabled !== msg.tvSubtitles.enabled || tv.track !== msg.tvSubtitles.track) {
+        this.update({ tvSubtitles: msg.tvSubtitles });
+      }
     } else if (msg.kind === 'members') {
       this.update({ memberChanges: this.snap.memberChanges + 1 });
     } else if (msg.kind === 'gate') {
@@ -841,7 +850,7 @@ export class RoomSyncEngine implements SyncEngine {
       this.lastStatus = '';
       this.update({ connection: 'open', waitingDevices: 0 });
       // Same observation list on every connect → fresh full snapshots.
-      for (const m of observeMessages(buildClientProfile(), { roomDetails: this.observesRoomDetails })) this.send(m);
+      for (const m of observeMessages(buildClientProfile(), { roomSettings: this.observesRoomSettings, roomDetails: this.observesRoomDetails })) this.send(m);
       this.heartbeatTimer = setInterval(() => this.send(heartbeatMessage(this.clock.now())), HEARTBEAT_MS);
     };
     ws.onmessage = (event) => {

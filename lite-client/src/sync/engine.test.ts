@@ -122,7 +122,7 @@ async function flush() {
   for (let i = 0; i < 10; i++) await Promise.resolve();
 }
 
-async function setup(options: { roomDetails?: boolean } = {}) {
+async function setup(options: { roomDetails?: boolean; roomSettings?: boolean } = {}) {
   const player = fakePlayer();
   const api = fakeApi();
   const engine = new RoomSyncEngine(api as unknown as ApiClient, player as unknown as VideoPlayer, {
@@ -299,9 +299,9 @@ describe('RoomSyncEngine', () => {
       'playback_state',
       'playback',
       'playlist_items',
-      'room_settings',
       'room_members',
       'room_online',
+      'room_settings',
     ]);
     expect(ws.sent[2].observeResource).toMatchObject({ deliveryMode: 2, playlistItems: { request: { pageSize: 100 } } });
     expect(engine.snapshot().playlist).toBeNull();
@@ -310,6 +310,21 @@ describe('RoomSyncEngine', () => {
     await flush();
     FakeWS.all[1].open();
     expect(FakeWS.all[1].sent.map((m) => m.observeResource?.observeId)).toContain('playlist_items');
+  });
+
+  it("gives a TV the room's settings and nothing else of the room's details", async () => {
+    const { ws, engine } = await setup({ roomSettings: true });
+    expect(ws.sent.map((m) => m.observeResource.observeId)).toEqual(['playback_state', 'playback', 'room_settings']);
+    expect(engine.snapshot().tvSubtitles).toBeNull();
+    const push = (settings: object) => ws.push({ resourceEvent: { observeId: 'room_settings', roomSettings: { settings } } });
+    push({ tvSubtitles: { enabled: true, track: 'en|English' } });
+    expect(engine.snapshot().tvSubtitles).toEqual({ enabled: true, track: 'en|English' });
+    // On the wire, false and "" are left out.
+    push({ tvSubtitles: {} });
+    expect(engine.snapshot().tvSubtitles).toEqual({ enabled: false, track: '' });
+    // Settings from before this field existed.
+    push({});
+    expect(engine.snapshot().tvSubtitles).toEqual({ enabled: true, track: '' });
   });
 
   it('keeps the pushed playlist in the snapshot, including an emptied one', async () => {

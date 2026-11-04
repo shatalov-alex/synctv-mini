@@ -262,7 +262,7 @@ impl ClientApiImpl {
         try_playback_state_to_proto(&state, &self.public_id_codec)
     }
 
-    async fn user_username_for_event(&self, user_id: &UserId) -> Result<String, ApiError> {
+    pub(super) async fn user_username_for_event(&self, user_id: &UserId) -> Result<String, ApiError> {
         self.user_service
             .get_user(user_id)
             .await

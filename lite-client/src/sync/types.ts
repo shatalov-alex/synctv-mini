@@ -1,5 +1,6 @@
 import type { Media } from '../api/types';
 import type { PlayableSource } from '../player/source';
+import type { TvSubtitles } from './protocol';
 import type { SyncState } from './state';
 
 export type ConnectionStatus = 'idle' | 'connecting' | 'open' | 'reconnecting' | 'closed';
@@ -32,6 +33,8 @@ export interface SyncSnapshot {
   playlist: Media[] | null;
   /** New media starts playing (else it waits paused); null without `roomDetails` or before the first push. */
   autoPlay: boolean | null;
+  /** What the room's TVs show; null without room settings or before the first push. */
+  tvSubtitles: TvSubtitles | null;
   /** Bumped whenever someone comes online in the room, or leaves or is removed from it. */
   memberChanges: number;
 }

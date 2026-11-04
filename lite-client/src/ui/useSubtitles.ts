@@ -11,6 +11,8 @@ export interface SubtitleControls {
   current: SubtitleTrack | null;
   cues: SubtitleCue[];
   failed: boolean;
+  /** The TV's choice couldn't be changed. */
+  tvChoiceFailed: boolean;
   select(key: string | null): void;
   /** Off, then each track in turn: what a remote's single key can do. */
   cycle(): void;
@@ -43,20 +45,36 @@ async function fetchCues(urls: string[]): Promise<SubtitleCue[] | null> {
   return null;
 }
 
-export function useSubtitles({ snapshot, fetchPlayback }: PlayerBinding): SubtitleControls {
-  const source = snapshot && !snapshot.remote ? snapshot.source : null;
+/**
+ * `tv`: this is a TV page. A TV, and a phone in remote mode, use the room's shared TV
+ * choice; a phone watching for itself uses its own. The remote only needs the choice,
+ * so it loads no subtitles and has nothing to show.
+ */
+export function useSubtitles(binding: PlayerBinding, { tv = false }: { tv?: boolean } = {}): SubtitleControls {
+  const { snapshot, fetchPlayback, setTvSubtitles } = binding;
+  const source = snapshot ? snapshot.source : null;
+  const remote = !!(snapshot && snapshot.remote);
+  const shared = tv || remote;
   const tracks = source ? source.subtitles : [];
-  const [prefs, setPrefs] = useState(subtitlePrefs);
+  const [ownPrefs, setOwnPrefs] = useState(subtitlePrefs);
+  /** A change on its way to the server, until its push arrives. */
+  const [pending, setPending] = useState<SubtitlePrefs | null>(null);
+  const [tvChoiceFailed, setTvChoiceFailed] = useState(false);
+  const pushed = snapshot && snapshot.tvSubtitles;
+  const sharedPrefs: SubtitlePrefs = pending || (pushed ? { on: pushed.enabled, track: pushed.track || null } : { on: true, track: null });
+  const prefs = shared ? sharedPrefs : ownPrefs;
   const [loaded, setLoaded] = useState<{ id: string; cues: SubtitleCue[] } | null>(null);
   const [failedId, setFailedId] = useState<string | null>(null);
   /** The URLs last refused per track: a re-issued list is worth another try, the same one isn't. */
   const refused = useRef<{ id: string; urls: string } | null>(null);
 
+  useEffect(() => setPending(null), [pushed]);
+
   const current = useMemo(
     () => chosenTrack(tracks, source ? source.defaultSubtitleIndex : 0, prefs),
-    [source, prefs],
+    [source, prefs.on, prefs.track],
   );
-  const id = source && current ? `${source.key}|${current.key}` : null;
+  const id = source && current && !remote ? `${source.key}|${current.key}` : null;
   const urls = current ? current.urls.join(' ') : '';
 
   useEffect(() => {
@@ -85,11 +103,21 @@ export function useSubtitles({ snapshot, fetchPlayback }: PlayerBinding): Subtit
     return () => {
       stale = true;
     };
-  }, [id, urls]);
+    // Re-issued URLs matter only after a refusal; they mustn't restart a download under way.
+  }, [id, failedId === id ? urls : '']);
 
   const choose = (next: SubtitlePrefs) => {
-    setSubtitlePrefs(next);
-    setPrefs(next);
+    if (!shared) {
+      setSubtitlePrefs(next);
+      setOwnPrefs(next);
+      return;
+    }
+    setPending(next);
+    setTvChoiceFailed(false);
+    setTvSubtitles(next.on, next.track || '').catch(() => {
+      setPending(null);
+      setTvChoiceFailed(true);
+    });
   };
   const select = (key: string | null) => choose(key ? { on: true, track: key } : { on: false, track: prefs.track });
   const cycle = () => {
@@ -104,6 +132,7 @@ export function useSubtitles({ snapshot, fetchPlayback }: PlayerBinding): Subtit
     current,
     cues: loaded && loaded.id === id ? loaded.cues : [],
     failed: !!id && failedId === id,
+    tvChoiceFailed,
     select,
     cycle,
   };

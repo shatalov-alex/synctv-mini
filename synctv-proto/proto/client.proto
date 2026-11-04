@@ -383,6 +383,14 @@ message RoomSettings {
   uint64 guest_removed_permissions = 12;
   bool voice_chat_enabled = 13;
   bool p2p_media_enabled = 14;
+  // What the room's TVs show; a phone in remote mode changes it.
+  TvSubtitles tv_subtitles = 15;
+}
+
+message TvSubtitles {
+  bool enabled = 1;
+  // The chosen track, as "language|name"; empty for the media's default.
+  string track = 2;
 }
 
 message AlistTarget {
@@ -5760,3 +5768,11 @@ message ListTvDevicesResponse {
 }
 
 message RevokeTvDeviceResponse {}
+
+// HTTP API: PUT /api/rooms/{room_id}/tvs/subtitles
+message SetTvSubtitlesRequest {
+  bool enabled = 1;
+  string track = 2 [(buf.validate.field).string.max_len = 700];
+}
+
+message SetTvSubtitlesResponse {}

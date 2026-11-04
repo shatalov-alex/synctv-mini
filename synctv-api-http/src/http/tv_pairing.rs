@@ -1,7 +1,8 @@
 //! TV pairing routes: the TV starts and polls a pairing publicly (`/api/tv/pairings`,
 //! `/api/tv/pairings/poll`), a signed-in room member claims its code
 //! (`/api/tv/pairings/claim`), and the room creator lists and unpairs TVs
-//! (`/api/rooms/{roomId}/tvs`).
+//! (`/api/rooms/{roomId}/tvs`). The room's TVs share a subtitle choice
+//! (`/api/rooms/{roomId}/tvs/subtitles`).
 
 use axum::{
     extract::{Path, Request, State},
@@ -11,7 +12,7 @@ use synctv_api_common::impls::EndpointRateLimitCategory;
 use synctv_proto::client::{
     ClaimTvPairingRequest, ClaimTvPairingResponse, ListTvDevicesResponse, PollTvPairingRequest,
     PollTvPairingResponse, RevokeTvDeviceResponse, RoomMemberTargetPathRequest, RoomPathRequest,
-    StartTvPairingRequest, StartTvPairingResponse,
+    SetTvSubtitlesRequest, SetTvSubtitlesResponse, StartTvPairingRequest, StartTvPairingResponse,
 };
 
 use crate::http::{middleware::RequestMetadata, AppResult, AppState};
@@ -167,6 +168,46 @@ pub async fn list_tv_devices(
             move |authenticated| async move {
                 client_api
                     .list_tv_devices(&authenticated.user_id(), &path.room_id)
+                    .await
+            },
+        )
+        .await
+        .map_err(crate::http::error::map_api_error)?;
+    Ok(Json(resp))
+}
+
+/// Set what the room's TVs show (whoever may control playback, and the TVs themselves).
+#[cfg_attr(
+    feature = "openapi",
+    utoipa::path(
+        put,
+        path = "/api/rooms/{roomId}/tvs/subtitles",
+        tag = "Room Member",
+        params(("roomId" = String, Path, description = "Room ID")),
+        request_body = SetTvSubtitlesRequest,
+        responses(
+            (status = 200, description = "Set", body = SetTvSubtitlesResponse),
+            (status = 403, description = "May not control playback in this room", body = crate::openapi::GoogleRpcStatusSchema)
+        ),
+        security(("bearer_auth" = []))
+    )
+)]
+pub async fn set_tv_subtitles(
+    request_meta: RequestMetadata,
+    State(state): State<AppState>,
+    Path(path): Path<RoomPathRequest>,
+    Json(req): Json<SetTvSubtitlesRequest>,
+) -> AppResult<Json<SetTvSubtitlesResponse>> {
+    let client_api = state.shared_api_runtime.client_api.clone();
+    let resp = state
+        .shared_api_runtime
+        .client_api
+        .execute_user_endpoint(
+            &request_meta.0,
+            EndpointRateLimitCategory::Write,
+            move |authenticated| async move {
+                client_api
+                    .set_tv_subtitles(&authenticated.user_id(), &path.room_id, req)
                     .await
             },
         )

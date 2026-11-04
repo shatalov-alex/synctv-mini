@@ -129,6 +129,11 @@ export function setAutoPlay(api: ApiClient, roomId: string, enabled: boolean): P
   });
 }
 
+/** What the room's TVs show: for the remote, and the TV's own key. */
+export function setTvSubtitles(api: ApiClient, roomId: string, enabled: boolean, track: string): Promise<unknown> {
+  return api.request('PUT', `/api/rooms/${enc(roomId)}/tvs/subtitles`, { enabled, track });
+}
+
 export type PlaybackUpdate =
   | { type: 'play'; position?: number }
   | { type: 'pause'; position?: number }

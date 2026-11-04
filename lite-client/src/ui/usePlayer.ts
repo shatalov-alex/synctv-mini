@@ -1,6 +1,6 @@
 // Wires a <video> element to a VideoPlayer + RoomSyncEngine for one room.
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { getPlayback } from '../api/endpoints';
+import { getPlayback, setTvSubtitles } from '../api/endpoints';
 import type { ApiClient } from '../api/http';
 import type { Playback } from '../api/types';
 import { VideoPlayer } from '../player/player';
@@ -14,9 +14,10 @@ export interface PlayerBinding {
   snapshot: SyncSnapshot | null;
   /** A freshly signed playback, for URLs that have expired since the snapshot's. */
   fetchPlayback: () => Promise<Playback | undefined>;
+  setTvSubtitles: (enabled: boolean, track: string) => Promise<unknown>;
 }
 
-export function usePlayer(api: ApiClient, roomId: string, options: { remote?: boolean; roomDetails?: boolean } = {}): PlayerBinding {
+export function usePlayer(api: ApiClient, roomId: string, options: { remote?: boolean; roomDetails?: boolean; roomSettings?: boolean } = {}): PlayerBinding {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [binding, setBinding] = useState<{ engine: SyncEngine; player: VideoPlayer } | null>(null);
   const [snapshot, setSnapshot] = useState<SyncSnapshot | null>(null);
@@ -25,7 +26,11 @@ export function usePlayer(api: ApiClient, roomId: string, options: { remote?: bo
     const video = videoRef.current;
     if (!video) return;
     const player = new VideoPlayer(video);
-    const engine = new RoomSyncEngine(api, player, { remote: !!options.remote, roomDetails: !!options.roomDetails });
+    const engine = new RoomSyncEngine(api, player, {
+      remote: !!options.remote,
+      roomDetails: !!options.roomDetails,
+      roomSettings: !!options.roomSettings,
+    });
     const off = engine.onState(setSnapshot);
     engine.connect(roomId);
     setBinding({ engine, player });
@@ -43,6 +48,7 @@ export function usePlayer(api: ApiClient, roomId: string, options: { remote?: bo
     player: binding && binding.player,
     snapshot,
     fetchPlayback: () => getPlayback(api, roomId).then((res) => res.playback),
+    setTvSubtitles: (enabled, track) => setTvSubtitles(api, roomId, enabled, track),
   };
 }
 

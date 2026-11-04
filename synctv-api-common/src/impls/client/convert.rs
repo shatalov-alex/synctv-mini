@@ -193,6 +193,10 @@ pub fn room_settings_to_proto(
         guest_removed_permissions: settings.guest_removed_permissions.0,
         voice_chat_enabled: settings.voice_chat_enabled.0,
         p2p_media_enabled: settings.p2p_media_enabled.0,
+        tv_subtitles: Some(client_proto::TvSubtitles {
+            enabled: settings.tv_subtitles.enabled,
+            track: settings.tv_subtitles.track.clone(),
+        }),
     }
 }
 
@@ -230,6 +234,13 @@ pub fn room_settings_from_proto(
         p2p_media_enabled: synctv_core::models::room_settings::P2pMediaEnabled::new(
             settings.p2p_media_enabled,
         ),
+        tv_subtitles: settings
+            .tv_subtitles
+            .map(|tv| synctv_core::models::room_settings::TvSubtitles {
+                enabled: tv.enabled,
+                track: tv.track,
+            })
+            .unwrap_or_default(),
         auto_play: synctv_core::models::room_settings::AutoPlay::new(
             synctv_core::models::AutoPlaySettings {
                 enabled: auto_play.enabled,

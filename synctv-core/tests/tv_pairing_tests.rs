@@ -1,6 +1,7 @@
 //! TV pairing against a real database (testcontainers PG): start/poll/claim, one-time token
 //! delivery, expiry, claim permissions, brute-force lockout, and unpairing.
 
+use synctv_core::models::room_settings::TvSubtitles;
 use synctv_core::{
     models::{RoomPermission, RoomRole},
     service::{
@@ -387,4 +388,88 @@ async fn wrong_codes_lock_the_claimer_out() {
         poll(&f.rooms, &start).await,
         TvPairingPoll::Pending
     ));
+}
+
+#[tokio::test]
+#[ignore = "Requires Docker-backed PostgreSQL"]
+async fn the_tvs_subtitle_choice_is_open_to_whoever_controls_playback() {
+    let f = Box::pin(setup()).await;
+    let current = || async { f.rooms.get_room_settings(&f.room.id).await.checked("settings") };
+    let english = TvSubtitles {
+        enabled: true,
+        track: "en|English".to_string(),
+    };
+    let off = TvSubtitles {
+        enabled: false,
+        track: "en|English".to_string(),
+    };
+    assert!(current().await.tv_subtitles.enabled, "on by default");
+
+    // Other settings stay as they were.
+    let before = current().await;
+    let snapshot = f
+        .rooms
+        .set_tv_subtitles_with_outbox(f.room.id, f.creator.id, english.clone(), None)
+        .await
+        .checked("creator sets");
+    assert_eq!(snapshot.settings.tv_subtitles, english);
+    assert_eq!(snapshot.settings.max_members.0, before.max_members.0);
+    assert_eq!(
+        snapshot.settings.auto_play.value.enabled,
+        before.auto_play.value.enabled
+    );
+
+    // An invited guest may, though not manage the room's settings.
+    let guest = f
+        .users
+        .find_or_create_telegram_user(&telegram_user(2, "Olena"))
+        .await
+        .checked("guest");
+    let (invite, _token) = f
+        .rooms
+        .create_room_invite(f.room.id, f.creator.id, None, Some(1))
+        .await
+        .checked("invite");
+    f.rooms
+        .admit_invited_member(&invite, guest.id, "Olena".to_string())
+        .await
+        .checked("guest admitted");
+    f.rooms
+        .set_tv_subtitles_with_outbox(f.room.id, guest.id, off.clone(), None)
+        .await
+        .checked("guest sets");
+    assert_eq!(current().await.tv_subtitles, off);
+    assert!(matches!(
+        f.rooms
+            .set_settings_with_outbox(f.room.id, guest.id, before, None)
+            .await,
+        Err(Error::Authorization(_))
+    ));
+
+    // So may the TV itself, for its own key.
+    let start = f.rooms.start_tv_pairing().await.checked("start");
+    let tv = f
+        .rooms
+        .claim_tv_pairing_with_control(&start.code, f.room.id, f.creator.id, None, None)
+        .await
+        .checked("claim");
+    f.rooms
+        .set_tv_subtitles_with_outbox(f.room.id, tv, english.clone(), None)
+        .await
+        .checked("TV sets");
+    assert_eq!(current().await.tv_subtitles, english);
+
+    // Someone outside the room may not.
+    let stranger = f
+        .users
+        .find_or_create_telegram_user(&telegram_user(9, "Mallory"))
+        .await
+        .checked("stranger");
+    assert!(matches!(
+        f.rooms
+            .set_tv_subtitles_with_outbox(f.room.id, stranger.id, off, None)
+            .await,
+        Err(Error::Authorization(_))
+    ));
+    assert_eq!(current().await.tv_subtitles, english);
 }
