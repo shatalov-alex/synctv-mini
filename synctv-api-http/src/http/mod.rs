@@ -24,6 +24,7 @@ pub(crate) mod public;
 pub(crate) mod room;
 pub(crate) mod room_extra;
 pub(crate) mod room_invites;
+pub(crate) mod service;
 pub(crate) mod ticket;
 pub(crate) mod tv_pairing;
 pub(crate) mod user;
@@ -695,6 +696,11 @@ fn register_read_routes() -> Router<AppState> {
         )
         .route("/api/rooms/{roomId}/media/{mediaId}", get(room::get_media))
         .route("/api/rooms/{roomId}/playback", get(room::get_playback))
+        .route("/api/service/timeline", get(service::get_service_timeline))
+        .route(
+            "/api/service/rooms/{roomId}/timeline",
+            get(service::get_service_room_timeline),
+        )
         .route(
             "/api/rooms/{roomId}/playback/history",
             get(room::list_playback_history).delete(room::clear_playback_history),

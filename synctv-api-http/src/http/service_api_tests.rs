@@ -461,10 +461,7 @@ async fn reported_duration_is_kept_once_and_served_by_playback() -> TestResult {
     );
     // Idempotent: a later, different report does not replace it (pbjson omits stored=false).
     let second = report_duration(app, &room_id, &media_id, 99.0).await?;
-    assert_eq!(
-        second,
-        serde_json::json!({ "durationSeconds": 1234.5 })
-    );
+    assert_eq!(second, serde_json::json!({ "durationSeconds": 1234.5 }));
 
     let (_, playback) = send(
         app,
@@ -522,10 +519,7 @@ async fn implausible_or_redundant_durations_are_ignored() -> TestResult {
     // A duration the adder supplied stays authoritative.
     let known = add_direct_url(app, &room_id, "known", Some(60.0)).await?;
     let body = report_duration(app, &room_id, &known, 75.0).await?;
-    assert_eq!(
-        body,
-        serde_json::json!({ "durationSeconds": 60.0 })
-    );
+    assert_eq!(body, serde_json::json!({ "durationSeconds": 60.0 }));
 
     // Someone outside the room may not report.
     let stranger = create_user(
@@ -550,5 +544,202 @@ async fn implausible_or_redundant_durations_are_ignored() -> TestResult {
         status == StatusCode::FORBIDDEN || status == StatusCode::NOT_FOUND,
         "{status}: {body}"
     );
+    Ok(())
+}
+
+async fn update_playback(
+    app: &axum::Router,
+    room_id: &str,
+    body: serde_json::Value,
+) -> TestResult<serde_json::Value> {
+    let (status, state) = send(
+        app,
+        Call::keyed("PATCH", format!("/api/rooms/{room_id}/playback")).json(body),
+    )
+    .await?;
+    anyhow::ensure!(status == StatusCode::OK, "update playback: {state}");
+    Ok(state)
+}
+
+fn f64_field(value: &serde_json::Value, pointer: &str) -> TestResult<f64> {
+    value
+        .pointer(pointer)
+        .and_then(serde_json::Value::as_f64)
+        .ok_or_else(|| anyhow::anyhow!("missing {pointer} in {value}"))
+}
+
+#[tokio::test]
+#[ignore = "Requires Docker-backed PostgreSQL"]
+async fn timeline_lists_playing_rooms_with_server_computed_positions() -> TestResult {
+    let harness = Box::pin(setup(runtime_settings(
+        ServiceApiActAs::TelegramAdmin,
+        TELEGRAM_ADMIN_ID,
+    )?))
+    .await?;
+    let app = &harness.app;
+    let playing_room = create_room(app, "Playing room").await?;
+    let idle_room = create_room(app, "Idle room").await?;
+    let media_id = add_direct_url(app, &playing_room, "film", Some(600.0)).await?;
+    let (status, started) = send(
+        app,
+        Call::keyed("POST", format!("/api/rooms/{playing_room}/playback/start"))
+            .json(serde_json::json!({ "mediaId": media_id })),
+    )
+    .await?;
+    assert_eq!(status, StatusCode::OK, "{started}");
+    update_playback(
+        app,
+        &playing_room,
+        serde_json::json!({ "type": 1, "playing": true, "position": 100.0 }),
+    )
+    .await?;
+
+    // A viewer is connected to the idle room; a third room has neither viewers nor playback.
+    let quiet_room = create_room(app, "Quiet room").await?;
+    let codec = &harness.state.shared_api_runtime.public_id_codec;
+    let presence = &harness.state.presence_service;
+    presence
+        .register_connection(
+            "conn-1".to_string(),
+            "node-1".to_string(),
+            synctv_core::models::RealtimeActor::User {
+                user_id: harness.admin.id,
+                public_id: codec
+                    .encode_user_id(harness.admin.id)
+                    .map_err(anyhow::Error::msg)?,
+            },
+        )
+        .await
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    presence
+        .join_room(
+            "conn-1",
+            codec
+                .decode_room_id(&idle_room)
+                .map_err(anyhow::Error::msg)?,
+        )
+        .await
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+
+    let (status, timeline) = send(app, Call::keyed("GET", "/api/service/timeline")).await?;
+    assert_eq!(status, StatusCode::OK, "{timeline}");
+    let rooms = timeline
+        .pointer("/rooms")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| anyhow::anyhow!("rooms missing: {timeline}"))?;
+    let listed: Vec<&str> = rooms
+        .iter()
+        .filter_map(|room| room["roomId"].as_str())
+        .collect();
+    assert_eq!(listed.len(), 2, "{timeline}");
+    assert!(listed.contains(&playing_room.as_str()) && listed.contains(&idle_room.as_str()));
+    assert!(!listed.contains(&quiet_room.as_str()));
+    let watched = rooms
+        .iter()
+        .find(|room| room["roomId"] == idle_room.as_str())
+        .ok_or_else(|| anyhow::anyhow!("idle room missing"))?;
+    assert_eq!(watched["onlineViewers"], 1);
+    assert_eq!(watched["mediaId"], serde_json::Value::Null);
+    let entry = rooms
+        .iter()
+        .find(|room| room["roomId"] == playing_room.as_str())
+        .ok_or_else(|| anyhow::anyhow!("playing room missing"))?;
+    assert_eq!(str_field(entry, "/roomId")?, playing_room);
+    assert_eq!(str_field(entry, "/roomName")?, "Playing room");
+    assert_eq!(str_field(entry, "/mediaId")?, media_id);
+    assert_eq!(str_field(entry, "/mediaName")?, "film");
+    assert_eq!(entry["playing"], true);
+    assert_eq!(entry["live"], false);
+    assert_eq!(entry["onlineViewers"], 0);
+    assert_eq!(f64_field(entry, "/durationSeconds")?, 600.0);
+    assert_eq!(str_field(entry, "/duration")?, "0:10:00");
+    let first = f64_field(entry, "/positionSeconds")?;
+    assert!((100.0..102.0).contains(&first), "{entry}");
+    assert!((f64_field(entry, "/remainingSeconds")? - (600.0 - first)).abs() < 1e-6);
+    assert!(entry["serverTimeMillis"].as_i64().is_some(), "{entry}");
+
+    // Advances on the server clock while playing...
+    tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
+    let (_, one) = send(
+        app,
+        Call::keyed("GET", format!("/api/service/rooms/{playing_room}/timeline")),
+    )
+    .await?;
+    let later = f64_field(&one, "/positionSeconds")?;
+    assert!(later >= first + 1.0, "{first} -> {later}");
+
+    // ...and stays put while paused.
+    update_playback(
+        app,
+        &playing_room,
+        serde_json::json!({ "type": 2, "playing": false, "position": 300.0 }),
+    )
+    .await?;
+    tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+    let (_, paused) = send(
+        app,
+        Call::keyed("GET", format!("/api/service/rooms/{playing_room}/timeline")),
+    )
+    .await?;
+    assert_eq!(paused["playing"], false);
+    assert_eq!(f64_field(&paused, "/positionSeconds")?, 300.0);
+    assert_eq!(str_field(&paused, "/position")?, "0:05:00");
+
+    // A room with nothing selected has null media fields.
+    let (status, idle) = send(
+        app,
+        Call::keyed("GET", format!("/api/service/rooms/{idle_room}/timeline")),
+    )
+    .await?;
+    assert_eq!(status, StatusCode::OK, "{idle}");
+    assert_eq!(idle["mediaId"], serde_json::Value::Null);
+    assert_eq!(idle["mediaName"], serde_json::Value::Null);
+    assert_eq!(idle["durationSeconds"], serde_json::Value::Null);
+    assert_eq!(idle["positionSeconds"], serde_json::Value::Null);
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "Requires Docker-backed PostgreSQL"]
+async fn timeline_is_for_the_service_key_and_admins_only() -> TestResult {
+    let harness = Box::pin(setup(runtime_settings(
+        ServiceApiActAs::TelegramAdmin,
+        TELEGRAM_ADMIN_ID,
+    )?))
+    .await?;
+    let user = create_user(
+        &harness.pool()?,
+        "plain_viewer",
+        synctv_core::models::UserRole::User,
+    )
+    .await?;
+    for (account, expected) in [
+        (&harness.admin, StatusCode::OK),
+        (&user, StatusCode::FORBIDDEN),
+    ] {
+        let token = harness
+            .state
+            .jwt_service
+            .sign_access_token(&account.id, 0)
+            .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+        let mut call = Call::keyed("GET", "/api/service/timeline");
+        call.authorization = Some(format!("Bearer {token}"));
+        let (status, body) = send(&harness.app, call).await?;
+        assert_eq!(status, expected, "{}: {body}", account.username);
+    }
+
+    // The key is enough even when it acts as a non-admin account.
+    let plain = Box::pin(setup(runtime_settings(
+        ServiceApiActAs::Username("svc_admin".to_string()),
+        0,
+    )?))
+    .await?;
+    let (status, body) = send(&plain.app, Call::keyed("GET", "/api/service/timeline")).await?;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    let mut anonymous = Call::keyed("GET", "/api/service/timeline");
+    anonymous.authorization = None;
+    let (status, _) = send(&harness.app, anonymous).await?;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
     Ok(())
 }

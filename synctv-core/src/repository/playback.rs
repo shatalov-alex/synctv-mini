@@ -22,6 +22,22 @@ impl RoomPlaybackStateRepository {
         &self.pool
     }
 
+    /// Rooms whose playback is running, most recently changed first; deleted rooms excluded.
+    pub async fn list_playing_room_ids(&self, limit: i64) -> Result<Vec<RoomId>> {
+        let room_ids = sqlx::query_scalar!(
+            r#"SELECT state.room_id AS "room_id!: RoomId"
+             FROM room_playback_state state
+             JOIN rooms ON rooms.id = state.room_id
+             WHERE state.is_playing AND rooms.deleted_at IS NULL
+             ORDER BY state.updated_at DESC
+             LIMIT $1"#,
+            limit,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(room_ids)
+    }
+
     async fn progress_for_source_with_executor(
         &self,
         room_id: &RoomId,

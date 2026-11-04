@@ -700,6 +700,22 @@ impl PlaybackService {
         Ok(updated_state)
     }
 
+    /// Rooms whose playback is running (for the service timeline).
+    pub async fn list_playing_room_ids(&self, limit: i64) -> Result<Vec<RoomId>> {
+        self.playback_repo.list_playing_room_ids(limit).await
+    }
+
+    /// Stored metadata (name, kind, duration) of the source `state` is playing, if any.
+    pub async fn source_metadata_for_state(
+        &self,
+        state: &RoomPlaybackState,
+    ) -> Result<Option<crate::models::PlaybackSourceMetadata>> {
+        let Some(identity) = PlaybackSourceIdentity::from_state(state)? else {
+            return Ok(None);
+        };
+        self.source_metadata_repo.get(&identity).await
+    }
+
     /// A player in the room learned the length of `media_id`. Members who may control
     /// playback report it; it becomes the media's duration only while none is known (direct
     /// URLs carry no backend-owned duration), so the first plausible report wins and repeats
