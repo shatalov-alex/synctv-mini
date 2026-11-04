@@ -1,6 +1,8 @@
 // Wires a <video> element to a VideoPlayer + RoomSyncEngine for one room.
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { getPlayback } from '../api/endpoints';
 import type { ApiClient } from '../api/http';
+import type { Playback } from '../api/types';
 import { VideoPlayer } from '../player/player';
 import { RoomSyncEngine } from '../sync/engine';
 import type { SyncEngine, SyncSnapshot } from '../sync/types';
@@ -10,6 +12,8 @@ export interface PlayerBinding {
   engine: SyncEngine | null;
   player: VideoPlayer | null;
   snapshot: SyncSnapshot | null;
+  /** A freshly signed playback, for URLs that have expired since the snapshot's. */
+  fetchPlayback: () => Promise<Playback | undefined>;
 }
 
 export function usePlayer(api: ApiClient, roomId: string, options: { remote?: boolean; roomDetails?: boolean } = {}): PlayerBinding {
@@ -33,7 +37,13 @@ export function usePlayer(api: ApiClient, roomId: string, options: { remote?: bo
     };
   }, [api, roomId]);
 
-  return { videoRef, engine: binding && binding.engine, player: binding && binding.player, snapshot };
+  return {
+    videoRef,
+    engine: binding && binding.engine,
+    player: binding && binding.player,
+    snapshot,
+    fetchPlayback: () => getPlayback(api, roomId).then((res) => res.playback),
+  };
 }
 
 /** Re-renders on player time/state events (throttled by the browser's timeupdate cadence). */
