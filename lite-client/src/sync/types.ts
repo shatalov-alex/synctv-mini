@@ -25,6 +25,8 @@ export interface SyncSnapshot {
   accessLost: string | null;
   /** Remote mode: this device only controls the room (e.g. a TV plays it); no local playback. */
   remote: boolean;
+  /** The room is held until this many devices have loaded the video; 0 = not held. */
+  waitingDevices: number;
 }
 
 /**

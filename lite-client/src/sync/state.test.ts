@@ -1,11 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
+  MAX_PULL_BACK_S,
+  PULL_BACK_INTERVAL_MS,
+  READY_BUFFER_S,
+  STALL_GRACE_MS,
   expectedPosition,
   isStale,
   needsCorrection,
+  nextReady,
   nextReconnect,
   planSync,
   sameSource,
+  shouldPullBack,
   stateFromWire,
   type PlayerView,
   type SyncState,
@@ -144,5 +150,56 @@ describe('reconnect backoff', () => {
       delays.push(next.delayMs);
     }
     expect(delays).toEqual([2000, 4000, 6000, 8000, 10000, 10000, 10000]);
+  });
+});
+
+describe('nextReady', () => {
+  const view = { loaded: true, paused: true, buffering: false, stalledMs: 0, readyState: 4, bufferedAhead: 0, atEnd: false };
+
+  it('needs the video loaded', () => {
+    expect(nextReady(true, { ...view, loaded: false })).toBe(false);
+  });
+
+  it('a stopped player needs a real buffer', () => {
+    expect(nextReady(true, { ...view, readyState: 2, bufferedAhead: 1 })).toBe(false);
+    expect(nextReady(false, { ...view, readyState: 3, bufferedAhead: READY_BUFFER_S })).toBe(true);
+    expect(nextReady(false, view)).toBe(true);
+    expect(nextReady(false, { ...view, readyState: 1, atEnd: true })).toBe(true);
+  });
+
+  it('a playing player only drops out after a real stall', () => {
+    const playing = { ...view, paused: false, readyState: 3, bufferedAhead: 1 };
+    expect(nextReady(true, playing)).toBe(true);
+    expect(nextReady(true, { ...playing, buffering: true, stalledMs: STALL_GRACE_MS - 1 })).toBe(true);
+    expect(nextReady(true, { ...playing, buffering: true, stalledMs: STALL_GRACE_MS })).toBe(false);
+  });
+
+  it('once out it needs the real buffer again', () => {
+    expect(nextReady(false, { ...view, paused: false, readyState: 3, bufferedAhead: 1 })).toBe(false);
+    expect(nextReady(false, { ...view, paused: false, readyState: 3, bufferedAhead: READY_BUFFER_S })).toBe(true);
+  });
+});
+
+describe('shouldPullBack', () => {
+  const room = stateFromWire({ playingMediaId: 'm', isPlaying: true, position: 100, generatedAtMillis: 1000, version: 1 });
+  const player = { currentTime: 95, paused: false, playbackRate: 1, duration: 3600 };
+
+  it('moves the room back to a device that fell behind', () => {
+    expect(shouldPullBack(room, player, 1000, PULL_BACK_INTERVAL_MS)).toBe(true);
+  });
+
+  it('leaves small offsets and devices ahead to the normal correction', () => {
+    expect(shouldPullBack(room, { ...player, currentTime: 99.5 }, 1000, PULL_BACK_INTERVAL_MS)).toBe(false);
+    expect(shouldPullBack(room, { ...player, currentTime: 110 }, 1000, PULL_BACK_INTERVAL_MS)).toBe(false);
+  });
+
+  it('is limited in how often and how far', () => {
+    expect(shouldPullBack(room, player, 1000, PULL_BACK_INTERVAL_MS - 1)).toBe(false);
+    expect(shouldPullBack(room, { ...player, currentTime: 100 - MAX_PULL_BACK_S - 1 }, 1000, PULL_BACK_INTERVAL_MS)).toBe(false);
+  });
+
+  it('never applies to a stopped player or room', () => {
+    expect(shouldPullBack(room, { ...player, paused: true }, 1000, PULL_BACK_INTERVAL_MS)).toBe(false);
+    expect(shouldPullBack({ ...room, playing: false }, player, 1000, PULL_BACK_INTERVAL_MS)).toBe(false);
   });
 });

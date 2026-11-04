@@ -329,6 +329,11 @@ function Watch({ roomId, onUnpair }: { roomId: string; onUnpair: (reason?: strin
           </div>
         </div>
       )}
+      {snapshot && snapshot.waitingDevices > 0 && (
+        <div class="tv-waiting">
+          Waiting for {snapshot.waitingDevices} {snapshot.waitingDevices === 1 ? 'device' : 'devices'} to load the video…
+        </div>
+      )}
       {snapshot && snapshot.error && <div class="tv-error">{snapshot.error}</div>}
     </main>
   );

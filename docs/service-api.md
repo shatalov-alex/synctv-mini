@@ -228,6 +228,20 @@ curl -s -X PATCH "$SYNCTV/api/rooms/$ROOM/playback" -H "$AUTH" -H 'Content-Type:
 Full playback resource (sources, `durationSeconds` once known):
 `GET /api/rooms/$ROOM/playback`.
 
+## Waiting for devices
+
+A room doesn't play while a connected player hasn't loaded the video. Players report their status
+over the room's WebSocket, and while one isn't ready the server pauses the room at the lowest
+position any player has reached. It resumes the room by itself when everyone is ready.
+
+For this API, that means:
+
+- `isPlaying` can read `false` for a while right after `POST /playback/start` or during playback,
+  although nobody pressed pause. **Don't send play again**, the room resumes by itself.
+- Sending pause or seek during the wait cancels the automatic resume. The room then stays paused.
+- A player that can't load for 45 s stops holding the room until it's ready again. A disconnected
+  or backgrounded player and a phone in remote mode never hold it.
+
 ## Timeline
 
 For the service key and root/admin users only (others get 403).

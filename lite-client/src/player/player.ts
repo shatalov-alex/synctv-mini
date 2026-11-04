@@ -147,6 +147,17 @@ export class VideoPlayer {
   get buffering(): boolean {
     return this.waiting || (!this.video.paused && this.video.readyState < 3);
   }
+  get readyState(): number {
+    return this.video.readyState;
+  }
+  /** Seconds buffered continuously from the current position. */
+  get bufferedAhead(): number {
+    const { buffered, currentTime } = this.video;
+    for (let i = 0; i < buffered.length; i++) {
+      if (buffered.start(i) <= currentTime + 0.1 && currentTime < buffered.end(i)) return buffered.end(i) - currentTime;
+    }
+    return 0;
+  }
   get ready(): boolean {
     return this.video.readyState >= 1;
   }
