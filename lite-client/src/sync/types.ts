@@ -28,8 +28,12 @@ export interface SyncSnapshot {
   remote: boolean;
   /** The room is held until this many devices have loaded the video; 0 = not held. */
   waitingDevices: number;
-  /** The room's playlist as last pushed; null without a `playlist` observation or before the first push. */
+  /** The room's playlist as last pushed; null without `roomDetails` or before the first push. */
   playlist: Media[] | null;
+  /** New media starts playing (else it waits paused); null without `roomDetails` or before the first push. */
+  autoPlay: boolean | null;
+  /** Bumped whenever someone joins, leaves or is removed from the room. */
+  memberChanges: number;
 }
 
 /**

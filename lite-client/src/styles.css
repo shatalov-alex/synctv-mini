@@ -514,3 +514,20 @@ html.player-max body {
 .player-remote-icon {
   font-size: 40px;
 }
+
+.playlist-head {
+  align-items: center;
+}
+.playlist-head h2 {
+  margin: 0;
+}
+.autoplay {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.autoplay input {
+  width: auto;
+  margin: 0;
+}

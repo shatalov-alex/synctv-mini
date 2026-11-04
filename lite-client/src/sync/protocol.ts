@@ -20,7 +20,7 @@ export function wsUrl(origin: string, roomId: string, ticket: string): string {
 /** Same page size as listRootMedia, so a pushed list matches a fetched one. */
 const PLAYLIST_PAGE_SIZE = 100;
 
-export function observeMessages(profile: Record<string, unknown>, options: { playlist?: boolean } = {}): unknown[] {
+export function observeMessages(profile: Record<string, unknown>, options: { roomDetails?: boolean } = {}): unknown[] {
   const messages: unknown[] = [
     { observeResource: { observeId: 'playback_state', deliveryMode: DELIVERY_PUSH_SNAPSHOT, playbackState: {} } },
     {
@@ -31,14 +31,18 @@ export function observeMessages(profile: Record<string, unknown>, options: { pla
       },
     },
   ];
-  if (options.playlist) {
-    messages.push({
-      observeResource: {
-        observeId: 'playlist_items',
-        deliveryMode: DELIVERY_PUSH_SNAPSHOT,
-        playlistItems: { request: { pageSize: PLAYLIST_PAGE_SIZE } },
+  if (options.roomDetails) {
+    messages.push(
+      {
+        observeResource: {
+          observeId: 'playlist_items',
+          deliveryMode: DELIVERY_PUSH_SNAPSHOT,
+          playlistItems: { request: { pageSize: PLAYLIST_PAGE_SIZE } },
+        },
       },
-    });
+      { observeResource: { observeId: 'room_settings', deliveryMode: DELIVERY_PUSH_SNAPSHOT, roomSettings: {} } },
+      { observeResource: { observeId: 'room_members', deliveryMode: DELIVERY_PUSH_SNAPSHOT, roomMemberEvents: {} } },
+    );
   }
   return messages;
 }
@@ -101,6 +105,8 @@ export type Incoming =
   | { kind: 'state'; state: WirePlaybackState }
   | { kind: 'playback'; playback: Playback }
   | { kind: 'playlist'; media: Media[] }
+  | { kind: 'settings'; autoPlay: boolean }
+  | { kind: 'members' }
   | { kind: 'gate'; waitingDevices: number; holding: boolean }
   | { kind: 'error'; code: number; message: string; opId: string }
   | { kind: 'termination'; message: string; code: number }
@@ -131,6 +137,8 @@ export function parseIncoming(text: string): Incoming {
     if (ev.observeId === 'playback_state' && !ev.changedOnly) return { kind: 'state', state: ev.playbackState || {} };
     // An empty playlist omits `media`, or the whole payload.
     if (ev.observeId === 'playlist_items' && !ev.changedOnly) return { kind: 'playlist', media: ev.playlistItems?.media || [] };
+    if (ev.observeId === 'room_settings' && ev.roomSettings) return { kind: 'settings', autoPlay: !!ev.roomSettings.settings?.autoPlay?.enabled };
+    if (ev.observeId === 'room_members' && ev.roomMemberEvent) return { kind: 'members' };
     return { kind: 'other' };
   }
   if (msg.error && typeof msg.error === 'object') {

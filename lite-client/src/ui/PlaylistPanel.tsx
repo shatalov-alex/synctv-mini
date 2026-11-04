@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { ApiClient } from '../api/http';
-import { addDirectUrlMedia, deleteMedia, listRootMedia, startPlayback } from '../api/endpoints';
+import { addDirectUrlMedia, deleteMedia, listRootMedia, setAutoPlay, startPlayback } from '../api/endpoints';
 import type { Media } from '../api/types';
 import { errorMessage } from '../format';
 import { confirmAction } from '../telegram';
@@ -11,11 +11,13 @@ export function PlaylistPanel(props: {
   playingMediaId: string;
   /** Pushed by the room socket; once there it replaces what we fetched. */
   liveItems: Media[] | null;
+  autoPlay: boolean | null;
   canManage: boolean;
 }) {
-  const { api, roomId, playingMediaId, liveItems, canManage } = props;
+  const { api, roomId, playingMediaId, liveItems, autoPlay, canManage } = props;
   const [fetched, setFetched] = useState<Media[] | null>(null);
   const items = liveItems || fetched;
+  const [savingAutoPlay, setSavingAutoPlay] = useState(false);
   const [error, setError] = useState('');
   const [url, setUrl] = useState('');
   const [name, setName] = useState('');
@@ -58,7 +60,7 @@ export function PlaylistPanel(props: {
       setName('');
       await afterChange();
       // Start it right away when nothing is playing.
-      if (!playingMediaId && media.id) await startPlayback(api, roomId, media.id);
+      if (!playingMediaId && media.id) await startPlayback(api, roomId, media.id, !!autoPlay);
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -69,7 +71,7 @@ export function PlaylistPanel(props: {
   const play = (media: Media) => {
     if (!media.id) return;
     // Response ignored: the room socket delivers the new state.
-    startPlayback(api, roomId, media.id).catch((e) => setError(errorMessage(e)));
+    startPlayback(api, roomId, media.id, !!autoPlay).catch((e) => setError(errorMessage(e)));
   };
 
   const remove = async (media: Media) => {
@@ -77,9 +79,31 @@ export function PlaylistPanel(props: {
     deleteMedia(api, roomId, media.id).then(afterChange, (e) => setError(errorMessage(e)));
   };
 
+  const toggleAutoPlay = (event: Event) => {
+    const input = event.target as HTMLInputElement;
+    const enabled = input.checked;
+    // Shown as the room has it: the socket delivers the change, to everyone.
+    input.checked = !!autoPlay;
+    setSavingAutoPlay(true);
+    setAutoPlay(api, roomId, enabled)
+      .catch((e) => setError(errorMessage(e)))
+      .finally(() => setSavingAutoPlay(false));
+  };
+
   return (
     <section class="card">
-      <h2>Playlist</h2>
+      <div class="row playlist-head">
+        <h2 class="grow">Playlist</h2>
+        <label class="small muted autoplay">
+          <input
+            type="checkbox"
+            checked={!!autoPlay}
+            disabled={!canManage || autoPlay === null || savingAutoPlay}
+            onChange={toggleAutoPlay}
+          />
+          Autoplay
+        </label>
+      </div>
       {items === null && !error && <p class="muted">Loading…</p>}
       {items && items.length === 0 && <p class="muted">No videos yet.</p>}
       {items && items.length > 0 && (
