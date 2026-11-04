@@ -1,3 +1,4 @@
+import type { Media } from '../api/types';
 import type { PlayableSource } from '../player/source';
 import type { SyncState } from './state';
 
@@ -27,6 +28,8 @@ export interface SyncSnapshot {
   remote: boolean;
   /** The room is held until this many devices have loaded the video; 0 = not held. */
   waitingDevices: number;
+  /** The room's playlist as last pushed; null without a `playlist` observation or before the first push. */
+  playlist: Media[] | null;
 }
 
 /**

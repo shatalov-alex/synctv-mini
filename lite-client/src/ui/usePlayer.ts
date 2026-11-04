@@ -12,7 +12,7 @@ export interface PlayerBinding {
   snapshot: SyncSnapshot | null;
 }
 
-export function usePlayer(api: ApiClient, roomId: string, options: { remote?: boolean } = {}): PlayerBinding {
+export function usePlayer(api: ApiClient, roomId: string, options: { remote?: boolean; playlist?: boolean } = {}): PlayerBinding {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [binding, setBinding] = useState<{ engine: SyncEngine; player: VideoPlayer } | null>(null);
   const [snapshot, setSnapshot] = useState<SyncSnapshot | null>(null);
@@ -21,7 +21,7 @@ export function usePlayer(api: ApiClient, roomId: string, options: { remote?: bo
     const video = videoRef.current;
     if (!video) return;
     const player = new VideoPlayer(video);
-    const engine = new RoomSyncEngine(api, player, { remote: !!options.remote });
+    const engine = new RoomSyncEngine(api, player, { remote: !!options.remote, playlist: !!options.playlist });
     const off = engine.onState(setSnapshot);
     engine.connect(roomId);
     setBinding({ engine, player });

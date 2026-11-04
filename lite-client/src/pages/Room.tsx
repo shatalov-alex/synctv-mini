@@ -15,7 +15,7 @@ import { remoteModeFor, setRemoteModeFor } from '../remoteMode';
 export function Room({ roomId, me }: { roomId: string; me: User | null }) {
   const [room, setRoom] = useState<RoomInfo | null>(null);
   const [error, setError] = useState('');
-  const binding = usePlayer(api, roomId, { remote: remoteModeFor(roomId) });
+  const binding = usePlayer(api, roomId, { remote: remoteModeFor(roomId), playlist: true });
   const snapshot = binding.snapshot;
 
   useEffect(() => {
@@ -64,6 +64,7 @@ export function Room({ roomId, me }: { roomId: string; me: User | null }) {
         api={api}
         roomId={roomId}
         playingMediaId={snapshot && snapshot.state ? snapshot.state.mediaId : ''}
+        liveItems={snapshot ? snapshot.playlist : null}
         canManage={isCreator}
       />
       {isCreator && <InvitePanel api={api} roomId={roomId} />}

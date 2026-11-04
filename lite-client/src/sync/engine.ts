@@ -95,6 +95,8 @@ export interface RoomSyncEngineOptions {
   freeMode?: boolean;
   /** Start in remote mode (no local playback). */
   remote?: boolean;
+  /** Keep `snapshot.playlist` current; for pages that show the playlist. */
+  playlist?: boolean;
 }
 
 export class RoomSyncEngine implements SyncEngine {
@@ -115,6 +117,7 @@ export class RoomSyncEngine implements SyncEngine {
     accessLost: null,
     remote: false,
     waitingDevices: 0,
+    playlist: null,
   };
 
   // sync state
@@ -143,6 +146,7 @@ export class RoomSyncEngine implements SyncEngine {
   private connectTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly origin: string;
   private readonly freeMode: boolean;
+  private readonly observesPlaylist: boolean;
   private readonly unsubscribePlayer: () => void;
   private hiddenAt = 0;
   /** A forced seek+play is waiting for playback to actually start (see settle()). */
@@ -170,6 +174,7 @@ export class RoomSyncEngine implements SyncEngine {
   ) {
     this.origin = options.origin || location.origin;
     this.freeMode = !!options.freeMode;
+    this.observesPlaylist = !!options.playlist;
     if (options.remote) {
       this.snap = { ...this.snap, remote: true };
       player.setPreload('metadata');
@@ -726,6 +731,8 @@ export class RoomSyncEngine implements SyncEngine {
       // handled without state: our superseded op or a duplicate ack → drop
     } else if (msg.kind === 'playback') {
       this.onPlayback(msg.playback);
+    } else if (msg.kind === 'playlist') {
+      this.update({ playlist: msg.media });
     } else if (msg.kind === 'gate') {
       const waitingDevices = msg.holding ? msg.waitingDevices : 0;
       if (waitingDevices !== this.snap.waitingDevices) this.update({ waitingDevices });
@@ -828,7 +835,7 @@ export class RoomSyncEngine implements SyncEngine {
       this.lastStatus = '';
       this.update({ connection: 'open', waitingDevices: 0 });
       // Same observation list on every connect → fresh full snapshots.
-      for (const m of observeMessages(buildClientProfile())) this.send(m);
+      for (const m of observeMessages(buildClientProfile(), { playlist: this.observesPlaylist })) this.send(m);
       this.heartbeatTimer = setInterval(() => this.send(heartbeatMessage(this.clock.now())), HEARTBEAT_MS);
     };
     ws.onmessage = (event) => {
