@@ -60,6 +60,14 @@ pub use health::{create_health_router, create_metrics_router, liveness_check};
 pub use middleware::{hsts_header, security_headers_middleware};
 pub use websocket::{websocket_handler, AuthMethod};
 
+/// The request was forwarded by the Cloudflare tunnel (it carries `Cf-Ray` or
+/// `Cf-Connecting-Ip`), whatever the socket peer looks like.
+pub(crate) fn carries_cloudflare_tunnel_headers(headers: &HeaderMap) -> bool {
+    synctv_api_common::service_api::CLOUDFLARE_TUNNEL_HEADERS
+        .iter()
+        .any(|name| headers.contains_key(*name))
+}
+
 pub(crate) fn reject_duplicate_header(headers: &HeaderMap, name: &HeaderName) -> AppResult<()> {
     let mut values = headers.get_all(name).iter();
     let _ = values.next();
@@ -1933,6 +1941,9 @@ fn apply_global_layers(router: Router<AppState>, state: &AppState) -> anyhow::Re
     Ok(
         apply_shared_http_layers(router, cors, server_config, hsts_value)
             .layer(axum_middleware::from_fn(metrics_middleware::metrics_layer))
+            .layer(axum_middleware::from_fn(
+                middleware::service_api_audit_middleware,
+            ))
             .layer(OnEarlyDropLayer::new(EarlyDropsAsFailures::new(
                 DefaultOnFailure::default(),
             )))
@@ -1953,5 +1964,7 @@ fn apply_global_layers(router: Router<AppState>, state: &AppState) -> anyhow::Re
     )
 }
 
+#[cfg(test)]
+mod service_api_tests;
 #[cfg(test)]
 mod tests;

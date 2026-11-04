@@ -26,6 +26,17 @@ pub struct TelegramAdminLogin<'a> {
     pub init_data_max_age_secs: i64,
 }
 
+/// Which account requests authenticated by the service API key act as (`service_api.act_as`).
+#[derive(Debug, Clone, Copy)]
+pub enum ServiceApiActAs<'a> {
+    /// The Telegram admin's account (`telegram.admin_user_id`), resolved like the bot does.
+    TelegramAdmin {
+        admin_telegram_user_id: i64,
+        admin_username: &'a str,
+    },
+    Username(&'a str),
+}
+
 impl UserService {
     /// Sign the configured Telegram admin in from Mini App `init_data`.
     ///
@@ -286,6 +297,38 @@ impl UserService {
             .get_by_username(admin_username)
             .await?
             .filter(usable))
+    }
+
+    /// The account the service API key acts as, or `None` if it does not resolve to an
+    /// active account. `TelegramAdmin` is the same account the Telegram admin acts as in the
+    /// Mini App and the bot, so rooms created through the key are theirs to manage too.
+    pub async fn find_service_api_user(
+        &self,
+        act_as: &ServiceApiActAs<'_>,
+    ) -> Result<Option<User>> {
+        match act_as {
+            ServiceApiActAs::TelegramAdmin {
+                admin_telegram_user_id,
+                admin_username,
+            } => {
+                if *admin_telegram_user_id == 0 {
+                    return Ok(None);
+                }
+                self.find_telegram_admin_user(*admin_telegram_user_id, admin_username)
+                    .await
+            }
+            ServiceApiActAs::Username(username) => {
+                let username = Self::canonical_username(username);
+                if username.is_empty() {
+                    return Ok(None);
+                }
+                Ok(self
+                    .repository
+                    .get_by_username(&username)
+                    .await?
+                    .filter(|user| Self::validate_user_access(user).is_ok()))
+            }
+        }
     }
 
     /// Create the account a newly paired TV signs in as: `tv_<id>`, plain user role, no

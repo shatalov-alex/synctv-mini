@@ -293,9 +293,9 @@ pub use user::{
     OpaqueRegistrationSession, OpaqueRegistrationSessionStore, OpaqueRegistrationStartChallenge,
     PendingAccountRegistration, RefreshRateLimitConfig, RegistrationMode, RegistrationPolicy,
     SensitiveVerificationChallenge, SensitiveVerificationOutcome, SensitiveVerificationSession,
-    SensitiveVerificationSessionStore, TelegramAdminLogin, TotpRecoveryCodes, TotpSetup,
-    UserDeletedChatMessage, UserDeletedRoomImpact, UserDeletionOptions, UserDeletionSource,
-    UserDeletionSummary, UserRestoreOptions, UserRestoreResult, UserService,
+    SensitiveVerificationSessionStore, ServiceApiActAs, TelegramAdminLogin, TotpRecoveryCodes,
+    TotpSetup, UserDeletedChatMessage, UserDeletedRoomImpact, UserDeletionOptions,
+    UserDeletionSource, UserDeletionSummary, UserRestoreOptions, UserRestoreResult, UserService,
     UserServiceDependencies, UserServiceRuntimeOptions,
 };
 pub use user::{

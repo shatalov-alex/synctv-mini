@@ -906,6 +906,7 @@ impl Application {
             shutdown.shutdown().await;
             return Err(e);
         }
+        Self::check_service_api_principal(&infra, &core).await;
 
         // Phase 6: Cluster infrastructure
         let cluster =
@@ -1533,6 +1534,40 @@ impl Application {
         Ok(Some(Arc::new(
             synctv_core::service::telegram_bot::TelegramAdminNotifier::new(api, bot.admin_user_id),
         )))
+    }
+
+    /// Say whether the service API key is on, and warn at startup if `service_api.act_as` does
+    /// not resolve: keyed requests are refused with 503 until it does.
+    async fn check_service_api_principal(infra: &Infrastructure, core: &CoreState) {
+        let config = &infra.config;
+        if config.service_api.key.trim().is_empty() {
+            return;
+        }
+        let act_as = synctv_api::service_api::ServiceApiActAs::parse(&config.service_api.act_as);
+        let admin_username = crate::resource_options::telegram_admin_username(config);
+        let lookup = act_as.lookup(config.telegram.admin_user_id, &admin_username);
+        match core
+            .services
+            .user_service
+            .find_service_api_user(&lookup)
+            .await
+        {
+            Ok(Some(user)) => info!(
+                act_as = %act_as.describe(),
+                username = %user.username,
+                "Service API key enabled"
+            ),
+            Ok(None) => warn!(
+                act_as = %act_as.describe(),
+                "Service API key is configured but service_api.act_as does not resolve to an \
+                 active account; keyed requests are refused until it does"
+            ),
+            Err(error) => warn!(
+                act_as = %act_as.describe(),
+                %error,
+                "Could not resolve the service API key's act-as account at startup"
+            ),
+        }
     }
 
     /// Long-poll Telegram for bot commands. Telegram allows one `getUpdates` consumer per bot,
@@ -2183,6 +2218,7 @@ mod tests {
                 root_password: String::new(),
             },
             telegram: crate::app_config::TelegramConfig::default(),
+            service_api: crate::app_config::ServiceApiConfig::default(),
             cluster: ClusterChannelConfig::default(),
             password_complexity: PasswordComplexityConfig::default(),
             buffer_sizes: BufferSizesConfig::default(),

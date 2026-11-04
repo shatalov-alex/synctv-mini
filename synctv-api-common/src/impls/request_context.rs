@@ -165,6 +165,9 @@ pub struct RequestMetadata {
     /// resolved client IP is unavailable) so that unauthenticated requests do
     /// not all collapse into a single shared `anon:unknown` bucket.
     pub socket_ip: Option<IpAddr>,
+    /// The request carries Cloudflare tunnel headers (`Cf-Ray` / `Cf-Connecting-Ip`), so it
+    /// reached the server from the internet even though the socket peer is local.
+    pub via_cloudflare_tunnel: bool,
     pub user_agent: Option<String>,
     pub endpoint_scope: Option<EndpointRateLimitScope>,
     /// Optional request budget extracted from the transport layer.
@@ -183,6 +186,7 @@ impl RequestMetadata {
             authorization: None,
             client_ip: None,
             socket_ip: None,
+            via_cloudflare_tunnel: false,
             user_agent: None,
             endpoint_scope: None,
             timeout: None,
@@ -204,6 +208,12 @@ impl RequestMetadata {
     #[must_use]
     pub const fn with_socket_ip(mut self, socket_ip: Option<IpAddr>) -> Self {
         self.socket_ip = socket_ip;
+        self
+    }
+
+    #[must_use]
+    pub const fn with_via_cloudflare_tunnel(mut self, via_cloudflare_tunnel: bool) -> Self {
+        self.via_cloudflare_tunnel = via_cloudflare_tunnel;
         self
     }
 
@@ -381,7 +391,12 @@ impl RequestExecutor {
             return Ok(AuthenticationAttempt::Missing);
         };
 
-        match self.authenticate_authorization(authorization).await {
+        let authenticated =
+            match crate::service_api::service_api_key_from_authorization(authorization) {
+                Some(key) => self.authenticate_service_api_key(metadata, key).await,
+                None => self.authenticate_authorization(authorization).await,
+            };
+        match authenticated {
             Ok(authenticated) => Ok(AuthenticationAttempt::Authenticated(Box::new(
                 authenticated,
             ))),
@@ -412,6 +427,60 @@ impl RequestExecutor {
 
         self.security_pipeline
             .check(&claims)
+            .await
+            .map_err(map_security_pipeline_error)
+    }
+
+    /// Authenticate `Authorization: Bearer stk_...` as the user `service_api.act_as` names.
+    /// The network checks come first so callers outside the internal network learn nothing
+    /// about the key.
+    async fn authenticate_service_api_key(
+        &self,
+        metadata: &RequestMetadata,
+        presented_key: &str,
+    ) -> Result<AuthenticatedToken, ApiError> {
+        let settings = &self.runtime_settings.service_api;
+        let Some(key_hash) = settings.key_hash.as_ref() else {
+            return Err(ApiError::Authentication(
+                "Service API key is not enabled on this server".to_string(),
+            ));
+        };
+        let internal_peer = metadata
+            .socket_ip
+            .is_some_and(|peer_ip| settings.peer_allowed(peer_ip));
+        if metadata.transport != TransportProtocol::Http
+            || metadata.via_cloudflare_tunnel
+            || !internal_peer
+        {
+            return Err(ApiError::Authorization(
+                "Service API key is only accepted from the internal network".to_string(),
+            ));
+        }
+        if !key_hash.matches(presented_key) {
+            return Err(ApiError::Authentication(
+                "Invalid service API key".to_string(),
+            ));
+        }
+
+        let telegram = &self.runtime_settings.telegram;
+        let act_as = settings
+            .act_as
+            .lookup(telegram.admin_user_id, &telegram.admin_username);
+        let user = self
+            .security_pipeline
+            .user_service()
+            .find_service_api_user(&act_as)
+            .await
+            .map_err(map_security_pipeline_error)?
+            .ok_or_else(|| {
+                ApiError::ServiceUnavailable(format!(
+                    "Service API key is valid but service_api.act_as ({}) does not resolve to \
+                     an active account",
+                    settings.act_as.describe()
+                ))
+            })?;
+        self.security_pipeline
+            .check_service_api_principal(&user)
             .await
             .map_err(map_security_pipeline_error)
     }
@@ -634,12 +703,18 @@ impl RequestExecutor {
             request_context.check_active()?;
             request_control
                 .run(async move {
-                    let claims = self.jwt_validator.validate_token(token).map_err(|_| {
-                        ApiError::Authentication(
-                            synctv_common::messages::INVALID_OR_EXPIRED_TOKEN.to_string(),
-                        )
-                    })?;
-                    let authenticated = self.security_check_claims(&claims).await?;
+                    let authenticated = if token
+                        .starts_with(crate::service_api::SERVICE_API_KEY_PREFIX)
+                    {
+                        self.authenticate_service_api_key(metadata, token).await?
+                    } else {
+                        let claims = self.jwt_validator.validate_token(token).map_err(|_| {
+                            ApiError::Authentication(
+                                synctv_common::messages::INVALID_OR_EXPIRED_TOKEN.to_string(),
+                            )
+                        })?;
+                        self.security_check_claims(&claims).await?
+                    };
                     self.enforce_rate_limit(
                         metadata,
                         category,

@@ -681,10 +681,37 @@ pub fn api_runtime_settings(config: &AppConfig) -> ApiRuntimeSettings {
             admin_username: telegram_admin_username(config),
             init_data_max_age_secs: config.telegram.init_data_max_age_secs,
         },
+        service_api: service_api_settings(config),
     }
 }
 
-fn telegram_admin_username(config: &AppConfig) -> String {
+/// Config validation already rejected a malformed key or network, so failures here only
+/// disable the key (fail closed).
+fn service_api_settings(config: &AppConfig) -> synctv_api::service_api::ServiceApiSettings {
+    use synctv_api::service_api::{
+        parse_service_api_networks, ServiceApiActAs, ServiceApiKeyHash, ServiceApiSettings,
+    };
+    let key = config.service_api.key.trim();
+    let key_hash = if key.is_empty() {
+        None
+    } else {
+        ServiceApiKeyHash::from_key(key)
+            .map_err(|error| tracing::error!(%error, "Service API key disabled"))
+            .ok()
+    };
+    let allowed_networks = parse_service_api_networks(&config.service_api.allowed_networks)
+        .unwrap_or_else(|error| {
+            tracing::error!(%error, "Service API key disabled: no usable allowed networks");
+            Vec::new()
+        });
+    ServiceApiSettings {
+        key_hash,
+        act_as: ServiceApiActAs::parse(&config.service_api.act_as),
+        allowed_networks,
+    }
+}
+
+pub fn telegram_admin_username(config: &AppConfig) -> String {
     if config.telegram.admin_username.is_empty() {
         config.bootstrap.root_username.clone()
     } else {

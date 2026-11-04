@@ -167,7 +167,7 @@ pub use deletion::{
 mod identity_bindings;
 mod identity_policy;
 mod login;
-pub use login::TelegramAdminLogin;
+pub use login::{ServiceApiActAs, TelegramAdminLogin};
 mod lookup;
 mod oauth2_users;
 mod password_credentials;

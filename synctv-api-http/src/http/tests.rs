@@ -831,6 +831,15 @@ pub(crate) fn test_app_state() -> super::AppState {
 fn test_app_state_with_rate_limits(
     request_rate_limits: synctv_api_common::api_runtime::RequestRateLimitSettings,
 ) -> super::AppState {
+    test_app_state_with_runtime_settings(synctv_api_common::ApiRuntimeSettings {
+        request_rate_limits,
+        ..synctv_api_common::ApiRuntimeSettings::default()
+    })
+}
+
+pub(crate) fn test_app_state_with_runtime_settings(
+    config: synctv_api_common::ApiRuntimeSettings,
+) -> super::AppState {
     let database = http_test_database();
     let pool = database.pool.clone();
     let username_cache = UsernameCache::local_only("test:username:".to_string(), 128, 60);
@@ -862,10 +871,6 @@ fn test_app_state_with_rate_limits(
     ));
     let (audit_service, _audit_handle) = AuditService::new(pool.clone());
     let audit_service = Arc::new(audit_service);
-    let config = synctv_api_common::ApiRuntimeSettings {
-        request_rate_limits,
-        ..synctv_api_common::ApiRuntimeSettings::default()
-    };
     let config = Arc::new(config);
     let user_cache = Arc::new(synctv_core::cache::UserCache::local_only(
         128,

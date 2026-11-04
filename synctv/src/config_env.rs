@@ -682,6 +682,18 @@ pub(crate) fn apply_env_overrides_with(
         &mut config.telegram.api_base_url,
     );
 
+    env_override_str("SYNCTV_SERVICE_API_KEY", &mut config.service_api.key);
+    env_override_str_file(
+        "SYNCTV_SERVICE_API_KEY_FILE",
+        "service_api.key",
+        &mut config.service_api.key,
+    )?;
+    env_override_str("SYNCTV_SERVICE_API_ACT_AS", &mut config.service_api.act_as);
+    env_override_csv(
+        "SYNCTV_SERVICE_API_ALLOWED_NETWORKS",
+        &mut config.service_api.allowed_networks,
+    );
+
     env_override_str("SYNCTV_JWT_SECRET", &mut config.jwt.secret);
     env_override_str_file(
         "SYNCTV_JWT_SECRET_FILE",

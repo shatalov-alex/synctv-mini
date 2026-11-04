@@ -684,6 +684,30 @@ telegram:
   # Bot API base URL. Change only for a self-hosted Bot API server.
   api_base_url: "https://api.telegram.org"
 
+service_api:
+  # Service API key for another app on the internal (Docker) network: it calls every
+  # authenticated HTTP endpoint with `Authorization: Bearer <key>` instead of a JWT.
+  # Disabled while key is empty. See docs/service-api.md.
+  # Environment variables:
+  #   SYNCTV_SERVICE_API_KEY / SYNCTV_SERVICE_API_KEY_FILE
+  #   SYNCTV_SERVICE_API_ACT_AS
+  #   SYNCTV_SERVICE_API_ALLOWED_NETWORKS (comma-separated)
+  # Generate with: echo "stk_$(openssl rand -hex 32)". Must start with stk_ and be at
+  # least 36 characters; the server keeps only its SHA-256 and never logs it.
+  key: ""
+  # Account keyed requests act as (and own the rooms they create): telegram_admin = the
+  # account telegram.admin_user_id signs in as in the Mini App, or a username.
+  act_as: "telegram_admin"
+  # Socket peers (not forwarded headers) allowed to use the key. Requests that came
+  # through the Cloudflare tunnel (Cf-Ray / Cf-Connecting-Ip) are always refused.
+  allowed_networks:
+    - "127.0.0.0/8"
+    - "::1/128"
+    - "10.0.0.0/8"
+    - "172.16.0.0/12"
+    - "192.168.0.0/16"
+    - "fc00::/7"
+
   # ============================================================================
   # Cluster Configuration
   # ============================================================================

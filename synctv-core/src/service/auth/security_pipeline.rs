@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 use crate::{
     cache::{user_cache::CachedUserSnapshot, KeyBuilder, UserCache},
-    models::{UserId, UserStatus},
+    models::{User, UserId, UserStatus},
     service::UserService,
     Error, Result,
 };
@@ -30,6 +30,8 @@ const TWO_FACTOR_REQUIRED_MESSAGE: &str =
 #[derive(Debug, Clone)]
 pub struct AuthenticatedToken {
     pub claims: Claims,
+    /// The request carried the service API key rather than a JWT.
+    pub service_api_key: bool,
 }
 
 impl AuthenticatedToken {
@@ -224,6 +226,36 @@ impl SecurityPipeline {
 
         Ok(AuthenticatedToken {
             claims: claims.clone(),
+            service_api_key: false,
+        })
+    }
+
+    #[must_use]
+    pub const fn user_service(&self) -> &Arc<UserService> {
+        &self.user_service
+    }
+
+    /// Authenticate a request that presented the service API key as `user`, the account the
+    /// key acts as. The key itself is the credential, so password version, 2FA and the token
+    /// blacklist do not apply; banned or deleted accounts are still refused.
+    pub async fn check_service_api_principal(&self, user: &User) -> Result<AuthenticatedToken> {
+        if !user.can_login() || self.user_service.is_user_banned(&user.id).await? {
+            return Err(Error::Authentication(
+                AUTHENTICATION_FAILED_MESSAGE.to_string(),
+            ));
+        }
+        let password_version = self
+            .user_service
+            .get_password_credential_state(&user.id)
+            .await?
+            .version;
+        Ok(AuthenticatedToken {
+            claims: Claims::service_api_access(
+                user.id,
+                password_version,
+                crate::SystemClock.now().timestamp(),
+            ),
+            service_api_key: true,
         })
     }
 

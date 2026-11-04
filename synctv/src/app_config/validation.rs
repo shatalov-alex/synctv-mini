@@ -23,6 +23,16 @@ fn validate_telegram_urls(web_app_url: &str, api_base_url: &str) -> Result<(), S
     Ok(())
 }
 
+/// A configured service API key must look like one (never echo it back), and the allowed
+/// networks must parse.
+fn validate_service_api(config: &ServiceApiConfig) -> Result<(), String> {
+    if !config.key.is_empty() {
+        synctv_api::service_api::ServiceApiKeyHash::from_key(&config.key)?;
+    }
+    synctv_api::service_api::parse_service_api_networks(&config.allowed_networks)?;
+    Ok(())
+}
+
 fn validate_project_url(project_url: &str) -> Result<(), String> {
     let parsed = url::Url::parse(project_url)
         .map_err(|error| format!("server.project_url is not a valid URL: {error}"))?;
@@ -535,6 +545,9 @@ impl AppConfig {
         if let Err(error) =
             validate_telegram_urls(&self.telegram.web_app_url, &self.telegram.api_base_url)
         {
+            errors.push(error);
+        }
+        if let Err(error) = validate_service_api(&self.service_api) {
             errors.push(error);
         }
         if self
@@ -1482,11 +1495,12 @@ impl AppConfig {
 mod tests {
     use super::{
         valid_android_package_name, valid_apple_application_identifier,
-        valid_sha256_certificate_fingerprint, validate_project_url, validate_telegram_urls,
+        valid_sha256_certificate_fingerprint, validate_project_url, validate_service_api,
+        validate_telegram_urls,
     };
     use crate::app_config::{
         AppConfig, ClusterChannelConfig, ClusterDiscoveryMode, LogFileOutput, LogOutput,
-        SecurityConfig, SsrfConfig, StartupDiagnostic,
+        SecurityConfig, ServiceApiConfig, SsrfConfig, StartupDiagnostic,
     };
 
     #[test]
@@ -1512,6 +1526,22 @@ mod tests {
         assert!(errors
             .iter()
             .any(|error| error.contains("JWT secret is too short")));
+    }
+
+    #[test]
+    fn service_api_key_and_networks_are_validated() {
+        let mut config = ServiceApiConfig::default();
+        assert!(validate_service_api(&config).is_ok());
+        config.key = format!("stk_{}", "a".repeat(64));
+        assert!(validate_service_api(&config).is_ok());
+        config.key = "stk_tooshort".to_string();
+        let error = validate_service_api(&config).expect_err("short key must be rejected");
+        assert!(!error.contains("tooshort"), "error must not echo the key");
+        config.key = "a".repeat(64);
+        assert!(validate_service_api(&config).is_err());
+        config.key.clear();
+        config.allowed_networks = vec!["not-a-network".to_string()];
+        assert!(validate_service_api(&config).is_err());
     }
 
     #[test]

@@ -344,6 +344,24 @@ impl Claims {
         }
     }
 
+    /// Per-request claims for a request authenticated by the service API key. Never encoded
+    /// as a JWT; the unique `jti` keeps a logout from one keyed request away from the others.
+    #[must_use]
+    pub fn service_api_access(user_id: UserId, password_version: i32, now: i64) -> Self {
+        Self {
+            subject: UserSubject::new(user_id),
+            token: UserTokenContext::Access { session_id: None },
+            token_id: TokenId(format!("service-api:{}", uuid::Uuid::new_v4())),
+            iat: now,
+            exp: now + 60,
+            pv: password_version,
+            auth_context: None,
+            credential_binding: TokenCredentialBindingClaims::Password,
+            iss: None,
+            aud: None,
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn test_access(user_id: UserId, password_version: i32, iat: i64, exp: i64) -> Self {
         Self {

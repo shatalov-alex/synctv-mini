@@ -261,6 +261,7 @@ pub struct ApiRuntimeSettings {
     pub connection_limits: ConnectionLimitSettings,
     pub server_state: synctv_core::service::ServerStateRuntimeParams,
     pub telegram: TelegramAuthSettings,
+    pub service_api: crate::service_api::ServiceApiSettings,
 }
 
 impl Default for ApiRuntimeSettings {
@@ -287,6 +288,7 @@ impl Default for ApiRuntimeSettings {
                 livestream: synctv_core::service::ServerStateLivestreamOptions::default(),
             },
             telegram: TelegramAuthSettings::default(),
+            service_api: crate::service_api::ServiceApiSettings::default(),
         }
     }
 }
