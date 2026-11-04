@@ -95,8 +95,8 @@ export interface RoomSyncEngineOptions {
   freeMode?: boolean;
   /** Start in remote mode (no local playback). */
   remote?: boolean;
-  /** Keep `snapshot.playlist` current; for pages that show the playlist. */
-  playlist?: boolean;
+  /** Keep the playlist, autoplay and member changes current; for pages that show them. */
+  roomDetails?: boolean;
 }
 
 export class RoomSyncEngine implements SyncEngine {
@@ -118,6 +118,8 @@ export class RoomSyncEngine implements SyncEngine {
     remote: false,
     waitingDevices: 0,
     playlist: null,
+    autoPlay: null,
+    memberChanges: 0,
   };
 
   // sync state
@@ -146,7 +148,7 @@ export class RoomSyncEngine implements SyncEngine {
   private connectTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly origin: string;
   private readonly freeMode: boolean;
-  private readonly observesPlaylist: boolean;
+  private readonly observesRoomDetails: boolean;
   private readonly unsubscribePlayer: () => void;
   private hiddenAt = 0;
   /** A forced seek+play is waiting for playback to actually start (see settle()). */
@@ -174,7 +176,7 @@ export class RoomSyncEngine implements SyncEngine {
   ) {
     this.origin = options.origin || location.origin;
     this.freeMode = !!options.freeMode;
-    this.observesPlaylist = !!options.playlist;
+    this.observesRoomDetails = !!options.roomDetails;
     if (options.remote) {
       this.snap = { ...this.snap, remote: true };
       player.setPreload('metadata');
@@ -700,11 +702,11 @@ export class RoomSyncEngine implements SyncEngine {
     this.reportStatus(false);
   }
 
-  private async navigate(call: (api: ApiClient, roomId: string) => Promise<unknown>): Promise<void> {
+  private async navigate(call: (api: ApiClient, roomId: string, playing: boolean) => Promise<unknown>): Promise<void> {
     if (this.snap.navigating || !this.roomId) return;
     this.update({ navigating: true });
     try {
-      await call(this.api, this.roomId); // response ignored: state arrives over the socket
+      await call(this.api, this.roomId, !!this.snap.autoPlay); // response ignored: state arrives over the socket
     } catch (error) {
       this.update({ error: error instanceof Error ? error.message : 'Request failed' });
     } finally {
@@ -733,6 +735,10 @@ export class RoomSyncEngine implements SyncEngine {
       this.onPlayback(msg.playback);
     } else if (msg.kind === 'playlist') {
       this.update({ playlist: msg.media });
+    } else if (msg.kind === 'settings') {
+      if (msg.autoPlay !== this.snap.autoPlay) this.update({ autoPlay: msg.autoPlay });
+    } else if (msg.kind === 'members') {
+      this.update({ memberChanges: this.snap.memberChanges + 1 });
     } else if (msg.kind === 'gate') {
       const waitingDevices = msg.holding ? msg.waitingDevices : 0;
       if (waitingDevices !== this.snap.waitingDevices) this.update({ waitingDevices });
@@ -835,7 +841,7 @@ export class RoomSyncEngine implements SyncEngine {
       this.lastStatus = '';
       this.update({ connection: 'open', waitingDevices: 0 });
       // Same observation list on every connect → fresh full snapshots.
-      for (const m of observeMessages(buildClientProfile(), { playlist: this.observesPlaylist })) this.send(m);
+      for (const m of observeMessages(buildClientProfile(), { roomDetails: this.observesRoomDetails })) this.send(m);
       this.heartbeatTimer = setInterval(() => this.send(heartbeatMessage(this.clock.now())), HEARTBEAT_MS);
     };
     ws.onmessage = (event) => {

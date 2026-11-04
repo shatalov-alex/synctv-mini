@@ -560,6 +560,7 @@ async fn test_get_playback_returns_dynamic_playlist_item_playback_info() {
                 playlist_id: playlist_public_id.clone(),
                 target: proto_alist_target("/episode-1.mp4"),
                 client_operation_id: None,
+                playing: None,
             },
         )
         .await
@@ -808,6 +809,7 @@ async fn test_dynamic_playlist_get_playback_uses_bound_provider_instance() {
                 playlist_id: playlist_public_id,
                 target: proto_alist_target("/bound-episode-1.mp4"),
                 client_operation_id: None,
+                playing: None,
             },
         )
         .await
@@ -934,6 +936,7 @@ async fn test_static_provider_playback_with_signing_key_uses_provider_store_regi
                 playlist_id: String::new(),
                 target: None,
                 client_operation_id: None,
+                playing: None,
             },
         )
         .await
@@ -1138,6 +1141,7 @@ async fn test_get_playback_returns_state_when_playback_info_generation_fails() {
                 playlist_id: String::new(),
                 target: None,
                 client_operation_id: None,
+                playing: None,
             },
         )
         .await
@@ -1245,6 +1249,7 @@ async fn test_start_playback_returns_error_for_invalid_live_proxy_source_config(
                 playlist_id: String::new(),
                 target: None,
                 client_operation_id: None,
+                playing: None,
             },
         )
         .await

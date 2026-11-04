@@ -1810,6 +1810,7 @@ mod tests {
             playlist_id: "playlist-1".into(),
             target: None,
             client_operation_id: None,
+            playing: None,
         })
         .expect("static media should accept its playlist navigation context");
     }
@@ -1822,6 +1823,7 @@ mod tests {
                 playlist_id: String::new(),
                 target: Some(alist_target("/tv")),
                 client_operation_id: None,
+                playing: None,
             })
             .unwrap_err(),
         );
@@ -1837,6 +1839,7 @@ mod tests {
                 playlist_id: "playlist-1".into(),
                 target: None,
                 client_operation_id: None,
+                playing: None,
             })
             .unwrap_err(),
         );

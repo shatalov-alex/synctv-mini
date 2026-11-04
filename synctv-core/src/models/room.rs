@@ -184,7 +184,7 @@ pub struct AutoPlaySettings {
 impl Default for AutoPlaySettings {
     fn default() -> Self {
         Self {
-            enabled: true,
+            enabled: false,
             mode: PlayMode::Sequential,
             delay: 3,
         }

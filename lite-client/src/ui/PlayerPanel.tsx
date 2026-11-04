@@ -89,10 +89,13 @@ function waitingText(devices: number): string {
 export function PlayerPanel({
   binding,
   compact,
+  canUseRemote,
   onRemoteChange,
 }: {
   binding: PlayerBinding;
   compact?: boolean;
+  /** A TV is paired to the room; without one a phone has nothing to be the remote of. */
+  canUseRemote: boolean;
   /** Remote mode switched by the viewer (to remember it for the room). */
   onRemoteChange?: (on: boolean) => void;
 }) {
@@ -240,7 +243,7 @@ export function PlayerPanel({
                 {fullscreen.on ? 'Exit fullscreen' : 'Fullscreen'}
               </button>
             )}
-            <button disabled={!engine} onClick={toggleRemote}>
+            <button disabled={!engine || (!remote && !canUseRemote)} onClick={toggleRemote}>
               {remote ? 'Watch on this phone' : 'Use as remote'}
             </button>
           </div>

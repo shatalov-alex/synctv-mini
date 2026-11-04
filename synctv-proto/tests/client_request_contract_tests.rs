@@ -525,6 +525,7 @@ fn test_start_playback_request_serializes_dynamic_playlist_target() {
         playlist_id: "playlist-1".to_string(),
         target: emby_target("provider-item-1"),
         client_operation_id: None,
+        playing: None,
     };
 
     let json = serde_json::to_value(&request).expect("serialize start playback request");
@@ -543,6 +544,7 @@ fn test_start_playback_request_accepts_static_playlist_context() {
         playlist_id: "pl_1".to_string(),
         target: None,
         client_operation_id: None,
+        playing: None,
     };
 
     synctv_proto::validate(&request).expect("static playlist context should be valid");

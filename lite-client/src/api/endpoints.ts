@@ -109,16 +109,24 @@ export function getPlayback(api: ApiClient, roomId: string): Promise<GetPlayback
   return api.request('GET', `/api/rooms/${enc(roomId)}/playback`);
 }
 
-export function startPlayback(api: ApiClient, roomId: string, mediaId: string): Promise<PlaybackState> {
-  return api.request('POST', `/api/rooms/${enc(roomId)}/playback/start`, { mediaId });
+/** `playing: false` leaves the media paused at its start until someone presses play. */
+export function startPlayback(api: ApiClient, roomId: string, mediaId: string, playing: boolean): Promise<PlaybackState> {
+  return api.request('POST', `/api/rooms/${enc(roomId)}/playback/start`, { mediaId, playing });
 }
 
-export function playNext(api: ApiClient, roomId: string): Promise<PlaybackState> {
-  return api.request('POST', `/api/rooms/${enc(roomId)}/playback/next`, {});
+export function playNext(api: ApiClient, roomId: string, playing: boolean): Promise<PlaybackState> {
+  return api.request('POST', `/api/rooms/${enc(roomId)}/playback/next`, { playing });
 }
 
-export function playPrevious(api: ApiClient, roomId: string): Promise<PlaybackState> {
-  return api.request('POST', `/api/rooms/${enc(roomId)}/playback/previous`, {});
+export function playPrevious(api: ApiClient, roomId: string, playing: boolean): Promise<PlaybackState> {
+  return api.request('POST', `/api/rooms/${enc(roomId)}/playback/previous`, { playing });
+}
+
+export function setAutoPlay(api: ApiClient, roomId: string, enabled: boolean): Promise<unknown> {
+  return api.request('PATCH', `/api/rooms/${enc(roomId)}/settings`, {
+    settings: { autoPlay: { enabled } },
+    updateMask: 'autoPlay.enabled',
+  });
 }
 
 export type PlaybackUpdate =

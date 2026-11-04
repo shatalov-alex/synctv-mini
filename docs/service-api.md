@@ -210,7 +210,8 @@ to notify after a change.
 
 ### Playback
 
-Start a media (playback starts playing at 0), next / previous, stop:
+Start a media (playback starts playing at 0; `"playing": false` leaves it paused at 0 until
+someone presses play, also for next / previous), next / previous, stop:
 
 ```sh
 curl -s -X POST "$SYNCTV/api/rooms/$ROOM/playback/start" -H "$AUTH" -H 'Content-Type: application/json' \
@@ -219,6 +220,14 @@ curl -s -X POST "$SYNCTV/api/rooms/$ROOM/playback/start" -H "$AUTH" -H 'Content-
 curl -s -X POST "$SYNCTV/api/rooms/$ROOM/playback/next" -H "$AUTH" -H 'Content-Type: application/json' -d '{}'
 curl -s -X POST "$SYNCTV/api/rooms/$ROOM/playback/previous" -H "$AUTH" -H 'Content-Type: application/json' -d '{}'
 curl -s -X POST "$SYNCTV/api/rooms/$ROOM/playback/stop" -H "$AUTH" -H 'Content-Type: application/json' -d '{}'
+```
+
+When a media ends, the room moves on to the next one by itself. It plays only with the room's
+autoplay on, and otherwise waits paused. Autoplay is off by default:
+
+```sh
+curl -s -X PATCH "$SYNCTV/api/rooms/$ROOM/settings" -H "$AUTH" -H 'Content-Type: application/json' \
+  -d '{"settings": {"autoPlay": {"enabled": true}}, "updateMask": "autoPlay.enabled"}'
 ```
 
 Pause / play / seek (`type`: 1 play, 2 pause, 3 seek, 4 speed):

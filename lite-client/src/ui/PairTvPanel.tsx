@@ -1,9 +1,8 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useState } from 'preact/hooks';
 import type { ApiClient } from '../api/http';
 import {
   claimErrorMessage,
   claimPairing,
-  listTvDevices,
   normalizeCode,
   revokeTvDevice,
   type TvDevice,
@@ -41,25 +40,20 @@ export function PairTvPanel({
   api,
   roomId,
   isCreator,
+  tvs,
+  reloadTvs,
   onPaired,
 }: {
   api: ApiClient;
   roomId: string;
   isCreator: boolean;
-  onPaired?: () => void;
+  tvs: TvDevice[];
+  reloadTvs: () => Promise<void>;
+  onPaired: () => Promise<void>;
 }) {
   const [code, setCode] = useState('');
   const [state, setState] = useState<'idle' | 'busy' | 'done'>('idle');
   const [error, setError] = useState('');
-  const [tvs, setTvs] = useState<TvDevice[]>([]);
-
-  const reloadTvs = () => {
-    if (!isCreator) return Promise.resolve();
-    return listTvDevices(api, roomId).then(setTvs, (e) => setError(errorMessage(e)));
-  };
-  useEffect(() => {
-    void reloadTvs();
-  }, [roomId, isCreator]);
 
   const submit = async (event: Event) => {
     event.preventDefault();
@@ -71,8 +65,7 @@ export function PairTvPanel({
       await claimPairing(api, normalized, roomId);
       setState('done');
       setCode('');
-      if (onPaired) onPaired();
-      void reloadTvs();
+      await onPaired();
     } catch (e) {
       setState('idle');
       setError(claimErrorMessage(e));

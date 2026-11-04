@@ -29,6 +29,7 @@ impl StreamMessageHandler {
                 playlist_id: update.playlist_id.clone(),
                 target: update.target.clone(),
                 client_operation_id: update.client_operation_id.clone(),
+                playing: None,
             },
             &self.public_id_codec,
         )
@@ -66,6 +67,7 @@ impl StreamMessageHandler {
                     target.media_id,
                     target.playlist_id,
                     target.target,
+                    target.playing,
                     Some(prepared_fanout.outbox_factory_with_source_changed(true)),
                 )
                 .await

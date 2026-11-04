@@ -122,7 +122,7 @@ async function flush() {
   for (let i = 0; i < 10; i++) await Promise.resolve();
 }
 
-async function setup(options: { playlist?: boolean } = {}) {
+async function setup(options: { roomDetails?: boolean } = {}) {
   const player = fakePlayer();
   const api = fakeApi();
   const engine = new RoomSyncEngine(api as unknown as ApiClient, player as unknown as VideoPlayer, {
@@ -293,9 +293,16 @@ describe('RoomSyncEngine', () => {
     expect(api.requests.filter((r) => r.path === '/api/tickets')).toHaveLength(2);
   });
 
-  it('observes the playlist only when asked to, again on every connect', async () => {
-    const { ws, engine } = await setup({ playlist: true });
-    expect(ws.sent.map((m) => m.observeResource.observeId)).toEqual(['playback_state', 'playback', 'playlist_items']);
+  it('observes room details only when asked to, again on every connect', async () => {
+    const { ws, engine } = await setup({ roomDetails: true });
+    expect(ws.sent.map((m) => m.observeResource.observeId)).toEqual([
+      'playback_state',
+      'playback',
+      'playlist_items',
+      'room_settings',
+      'room_members',
+      'room_online',
+    ]);
     expect(ws.sent[2].observeResource).toMatchObject({ deliveryMode: 2, playlistItems: { request: { pageSize: 100 } } });
     expect(engine.snapshot().playlist).toBeNull();
     ws.close();
@@ -306,7 +313,7 @@ describe('RoomSyncEngine', () => {
   });
 
   it('keeps the pushed playlist in the snapshot, including an emptied one', async () => {
-    const { ws, engine, player } = await setup({ playlist: true });
+    const { ws, engine, player } = await setup({ roomDetails: true });
     const seen: unknown[] = [];
     engine.onState((s) => seen.push(s.playlist));
     ws.push({ resourceEvent: { observeId: 'playlist_items', playlistItems: { media: [{ id: 'a' }, { id: 'b' }] } } });
@@ -319,8 +326,37 @@ describe('RoomSyncEngine', () => {
     expect(player.calls).toEqual([]);
   });
 
+  it('next and previous follow the room autoplay setting', async () => {
+    const { ws, engine, api } = await setup({ roomDetails: true });
+    const bodies = () =>
+      api.requests.filter((r: any) => /playback\/(next|previous)$/.test(r.path)).map((r: any) => [r.path.split('/').pop(), r.body]);
+    await engine.next(); // not known yet: stays paused
+    ws.push({ resourceEvent: { observeId: 'room_settings', roomSettings: { settings: { autoPlay: { enabled: true } } } } });
+    expect(engine.snapshot().autoPlay).toBe(true);
+    await engine.next();
+    ws.push({ resourceEvent: { observeId: 'room_settings', roomSettings: { settings: {} } } });
+    expect(engine.snapshot().autoPlay).toBe(false);
+    await engine.prev();
+    expect(bodies()).toEqual([
+      ['next', { playing: false }],
+      ['next', { playing: true }],
+      ['previous', { playing: false }],
+    ]);
+  });
+
+  it('counts member changes', async () => {
+    const { ws, engine } = await setup({ roomDetails: true });
+    ws.push({ resourceEvent: { observeId: 'room_members', roomMemberEvent: { kind: 4 } } });
+    ws.push({ resourceEvent: { observeId: 'room_members', roomMemberEvent: { kind: 1 } } });
+    expect(engine.snapshot().memberChanges).toBe(2);
+    ws.push({ resourceEvent: { observeId: 'room_online', onlineEvent: { kind: 1, userId: 'usr_tv' } } });
+    expect(engine.snapshot().memberChanges).toBe(3);
+    ws.push({ resourceEvent: { observeId: 'room_online', onlineEvent: { kind: 2, userId: 'usr_tv' } } });
+    expect(engine.snapshot().memberChanges).toBe(3);
+  });
+
   it('a refused playlist observation leaves the playlist unknown', async () => {
-    const { ws, engine } = await setup({ playlist: true });
+    const { ws, engine } = await setup({ roomDetails: true });
     ws.push({ resourceObserveError: { observeId: 'playlist_items', error: { code: 7, message: 'Guests cannot observe playlist items' } } });
     expect(engine.snapshot().playlist).toBeNull();
     expect(engine.snapshot().error).toBeNull();

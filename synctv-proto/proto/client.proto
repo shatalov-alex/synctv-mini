@@ -2208,6 +2208,8 @@ message StartPlaybackRequest {
   string playlist_id = 2; // Static context with media_id, or dynamic playlist ID with target.
   ProviderTarget target = 3; // Provider-facing playback target payload. Omit for static media playback.
   optional string client_operation_id = 4 [(buf.validate.field).string = {uuid: true}];
+  // Whether the media starts playing or waits paused at its start. Unset: playing.
+  optional bool playing = 5;
 }
 
 // HTTP API: Stop current playback
@@ -2217,9 +2219,13 @@ message StopPlaybackRequest {
 
 message PlayNextRequest {
   optional string client_operation_id = 1 [(buf.validate.field).string = {uuid: true}];
+  // Whether the media starts playing or waits paused. Unset: playing.
+  optional bool playing = 2;
 }
 message PlayPreviousRequest {
   optional string client_operation_id = 1 [(buf.validate.field).string = {uuid: true}];
+  // Whether the media starts playing or waits paused. Unset: playing.
+  optional bool playing = 2;
 }
 
 message PlaybackHistoryEntry {
