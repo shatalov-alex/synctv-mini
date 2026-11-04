@@ -323,3 +323,27 @@ if __name__ == "__main__":
     for r in tv.timeline():
         print(r["roomName"], r["mediaName"], r["position"], "/", r["duration"] or "?")
 ```
+
+## Running the Telegram bot from another app
+
+SyncTV can leave the bot's chat to another app that uses the same token. Turn off
+SyncTV's long polling with `SYNCTV_TELEGRAM_BOT_POLLING_ENABLED=false`, so the other app
+can be the only consumer of updates. It can use `getUpdates` or a webhook. If two programs
+call `getUpdates` with one token, Telegram answers one of them with 409.
+
+SyncTV keeps doing these with polling off:
+
+- Admin notifications (e.g. room admission requests) are sent with `sendMessage`. Sending
+  from several processes with one token is fine.
+- The Mini App opens from the chat menu button ("Open", set on Telegram's side) and from
+  `https://t.me/<bot>?startapp=<payload>` links. Room invite links use this form. They
+  reach the Mini App directly and need no bot update handling.
+
+What the other app owns:
+
+- The command list (`setMyCommands`). SyncTV no longer registers `/start` and `/invite`.
+- Any replies to messages and callback queries.
+- Room, playlist, playback and timeline operations, through this service API.
+
+Avoid calling `setChatMenuButton` with a different URL. It would replace the Mini App
+button.
