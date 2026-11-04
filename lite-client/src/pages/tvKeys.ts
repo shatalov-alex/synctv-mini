@@ -1,7 +1,7 @@
 // Remote-control key mapping for the TV page. Old TV engines report
 // `keyCode` only (and vendor codes), so map both.
 
-export type TvAction = 'toggle' | 'back10' | 'forward10' | 'play' | 'pause' | 'next' | 'prev' | 'menu' | 'unpair' | null;
+export type TvAction = 'toggle' | 'back10' | 'forward10' | 'play' | 'pause' | 'next' | 'prev' | 'menu' | 'unpair' | 'subtitles' | null;
 
 const BY_KEY: Record<string, TvAction> = {
   ' ': 'toggle',
@@ -23,6 +23,9 @@ const BY_KEY: Record<string, TvAction> = {
   Up: 'menu',
   Down: 'menu',
   ColorF0Red: 'unpair',
+  ColorF3Blue: 'subtitles',
+  Subtitle: 'subtitles',
+  c: 'subtitles',
 };
 
 const BY_CODE: Record<number, TvAction> = {
@@ -43,6 +46,8 @@ const BY_CODE: Record<number, TvAction> = {
   38: 'menu',
   40: 'menu',
   403: 'unpair', // red colour key
+  406: 'subtitles', // blue colour key
+  460: 'subtitles', // Subtitle key (HbbTV / webOS)
 };
 
 export function tvAction(key: string | undefined, keyCode: number | undefined): TvAction {

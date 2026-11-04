@@ -160,6 +160,32 @@ curl -s -X POST "$SYNCTV/api/rooms/$ROOM/media" -H "$AUTH" -H 'Content-Type: app
 #  "sourceConfig": {"directUrl": {"medias": [...], "proxyMode": 2}}, ...}
 ```
 
+Subtitles are separate files listed next to the video. WebVTT is the format to send;
+the players also read SRT, and the text of ASS. The first one listed is on by default,
+unless `defaultSubtitleIndex` names another. Each viewer can turn them off or pick another
+one on their own device; this doesn't affect anyone else. Subtitles inside the video file
+are not read.
+
+```sh
+curl -s -X POST "$SYNCTV/api/rooms/$ROOM/media" -H "$AUTH" -H 'Content-Type: application/json' -d '{
+  "name": "Part 1",
+  "sourceConfig": {"directUrl": {
+    "medias": [{"url": "https://cdn.example.com/part1.mp4"}],
+    "subtitles": [
+      {"name": "English", "language": "en", "url": "https://cdn.example.com/part1.en.vtt", "format": "vtt"},
+      {"name": "Українська", "language": "uk", "url": "https://cdn.example.com/part1.uk.vtt", "format": "vtt"}
+    ],
+    "proxyMode": 2
+  }}
+}'
+```
+
+Keep `name` and `language` the same across episodes: that is how a viewer's choice carries
+over to the next one. The host doesn't need CORS headers as long as `proxyMode` allows the
+proxy (anything but 4, direct only). To add or replace subtitles later, `PATCH` the media as
+below, with the full `sourceConfig`; the viewing carries on and viewers see them straight away.
+A subtitle link that expires is refreshed the same way.
+
 Several at once: `POST /api/rooms/$ROOM/media/batch` with `{"items": [<AddMedia>, ...]}`.
 
 List the room's root playlist (media are in `media`, in playlist order):

@@ -77,3 +77,44 @@ describe('isRefusal', () => {
     for (const code of [undefined, 0, 200, 500, 503]) expect(isRefusal(code)).toBe(false);
   });
 });
+
+describe('pickSource subtitles', () => {
+  const playback = (subs: Record<string, object[]>, defaultSubtitleIndex?: number) => ({
+    mediaId: 'm',
+    defaultMode: 'direct',
+    playbackInfos: Object.fromEntries(
+      Object.entries(subs).map(([mode, subtitles]) => [
+        mode,
+        { medias: [{ url: 'https://x/a.mp4' }], subtitles, defaultSubtitleIndex },
+      ]),
+    ),
+  });
+  it('has none when the media has none', () => {
+    expect(pickSource(playback({ direct: [] }))?.subtitles).toEqual([]);
+  });
+  it("joins one file's URLs across modes, the current mode first", () => {
+    const source = pickSource(
+      playback({
+        proxy_direct: [{ name: 'English', language: 'en', url: '/api/signed' }],
+        direct: [{ name: 'English', language: 'en', url: 'https://x/en.vtt' }],
+      }),
+    );
+    expect(source?.subtitles).toEqual([
+      { key: 'en|English', name: 'English', language: 'en', urls: ['https://x/en.vtt', '/api/signed'] },
+    ]);
+  });
+  it('keeps only the proxy URL of a file that needs request headers', () => {
+    const source = pickSource(
+      playback({
+        direct: [{ name: 'English', url: 'https://x/en.vtt', headers: { Referer: 'https://x' } }],
+        proxy_direct: [{ name: 'English', url: '/api/signed' }],
+      }),
+    );
+    expect(source?.subtitles[0].urls).toEqual(['/api/signed']);
+  });
+  it('names an unnamed track and passes the default index on', () => {
+    const source = pickSource(playback({ direct: [{ url: 'https://x/1.vtt' }, { language: 'uk', url: 'https://x/2.vtt' }] }, 1));
+    expect(source?.subtitles.map((t) => t.name)).toEqual(['Subtitles 1', 'uk']);
+    expect(source?.defaultSubtitleIndex).toBe(1);
+  });
+});

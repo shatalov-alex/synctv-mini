@@ -224,6 +224,30 @@ select {
   height: 100%;
   background: #000;
 }
+.subtitle-line {
+  position: absolute;
+  left: 5%;
+  right: 5%;
+  bottom: 5%;
+  text-align: center;
+  white-space: pre-line;
+  color: #fff;
+  font-size: clamp(14px, 4.2vw, 28px);
+  line-height: 1.25;
+  text-shadow: 0 0 3px #000, 0 1px 3px #000, 0 0 1px #000;
+  pointer-events: none;
+}
+.subtitle-toggle {
+  min-width: 40px;
+  padding: 4px 8px;
+  margin-right: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.55;
+}
+.subtitle-toggle.on {
+  opacity: 1;
+}
 .player-empty,
 .player-status {
   position: absolute;
@@ -362,6 +386,20 @@ html.tv-mode body {
   bottom: 22%;
   font-size: 26px;
 }
+.tv-subtitle-line {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  bottom: 7%;
+  text-align: center;
+  white-space: pre-line;
+  font-size: 40px;
+  line-height: 1.25;
+  text-shadow: 0 0 4px #000, 0 2px 4px #000, 0 0 2px #000;
+}
+.tv-subtitle-line.raised {
+  bottom: 22%;
+}
 .tv-overlay {
   position: absolute;
   left: 0;
@@ -463,6 +501,13 @@ html.player-max body {
 .player.max .player-status {
   top: calc(8px + var(--tg-safe-area-inset-top, 0px) + var(--tg-content-safe-area-inset-top, 0px) + env(safe-area-inset-top));
 }
+.player.max .subtitle-line {
+  transition: bottom 0.25s;
+  bottom: calc(215px + env(safe-area-inset-bottom));
+}
+.player.max.idle .subtitle-line {
+  bottom: calc(6% + env(safe-area-inset-bottom));
+}
 .player.max .controls {
   position: absolute;
   left: 0;
@@ -483,6 +528,10 @@ html.player-max body {
   color: var(--button-text);
 }
 .player.max .controls .speed {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+.player.max .subtitle-toggle {
   background: rgba(255, 255, 255, 0.14);
   color: #fff;
 }

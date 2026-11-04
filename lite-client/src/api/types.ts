@@ -88,9 +88,19 @@ export interface PlaybackMedia {
   expireAt?: Int64;
 }
 
+export interface PlaybackSubtitle {
+  name?: string;
+  language?: string;
+  url?: string;
+  headers?: Record<string, string>;
+  format?: string;
+}
+
 export interface PlaybackInfo {
   medias?: PlaybackMedia[];
   defaultMediaIndex?: number;
+  subtitles?: PlaybackSubtitle[];
+  defaultSubtitleIndex?: number;
 }
 
 export interface Playback {

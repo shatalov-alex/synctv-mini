@@ -1,8 +1,10 @@
 import { useEffect, useLayoutEffect, useState } from 'preact/hooks';
 import { formatTime } from '../format';
+import { cueTextAt } from '../player/subtitles';
 import { haptic, onTgFullscreenChange, setTgFullscreen, tgFullscreenSupported } from '../telegram';
 import type { PlayerBinding } from './usePlayer';
 import { usePlayerTick, useTicker } from './usePlayer';
+import { useSubtitles } from './useSubtitles';
 
 export const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 export const SEEK_STEP_S = 10;
@@ -104,6 +106,8 @@ export function PlayerPanel({
   const [drag, setDrag] = useState<number | null>(null);
   const [container, setContainer] = useState<HTMLElement | null>(null);
   const fullscreen = useFullscreen(container);
+  const subtitles = useSubtitles(binding);
+  const subtitleText = player ? cueTextAt(subtitles.cues, player.currentTime) : '';
   const [idle, setIdle] = useState(false);
   const [wake, setWake] = useState(0);
 
@@ -148,6 +152,7 @@ export function PlayerPanel({
     <div class={fullscreen.on ? (idle ? 'player max idle' : 'player max') : 'player'} ref={setContainer}>
       <div class="player-stage" onClick={onStageTap}>
         <video ref={videoRef} class="video" playsInline />
+        {subtitleText && <div class="subtitle-line">{subtitleText}</div>}
         {remote && (
           <div class="player-remote">
             <div class="player-remote-icon">📺</div>
@@ -197,6 +202,31 @@ export function PlayerPanel({
             {!live && duration ? ` / ${formatTime(duration)}` : live ? ' · LIVE' : ''}
           </span>
           <span class="spacer" />
+          {subtitles.tracks.length === 1 && (
+            <button
+              class={subtitles.current ? 'subtitle-toggle on' : 'subtitle-toggle'}
+              aria-pressed={!!subtitles.current}
+              aria-label="Subtitles"
+              onClick={act(subtitles.cycle)}
+            >
+              CC
+            </button>
+          )}
+          {subtitles.tracks.length > 1 && (
+            <select
+              class="speed"
+              aria-label="Subtitles"
+              value={subtitles.current ? subtitles.current.key : ''}
+              onChange={(e) => subtitles.select((e.target as HTMLSelectElement).value || null)}
+            >
+              <option value="">CC off</option>
+              {subtitles.tracks.map((t) => (
+                <option key={t.key} value={t.key}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          )}
           <select
             class="speed"
             value={String(rate)}
@@ -249,6 +279,7 @@ export function PlayerPanel({
           </div>
         )}
         {snapshot && snapshot.waitingDevices > 0 && <div class="small">{waitingText(snapshot.waitingDevices)}</div>}
+        {subtitles.failed && <div class="small">These subtitles could not be loaded</div>}
         {snapshot && snapshot.error && <div class="error small">{snapshot.error}</div>}
       </div>
     </div>

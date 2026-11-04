@@ -8,7 +8,9 @@ import { formatTime } from '../format';
 import { pairLink } from '../links';
 import type { VideoPlayer } from '../player/player';
 import type { SyncEngine } from '../sync/types';
+import { cueTextAt } from '../player/subtitles';
 import { usePlayer, usePlayerTick } from '../ui/usePlayer';
+import { useSubtitles } from '../ui/useSubtitles';
 import { tvAction } from './tvKeys';
 
 const tvApi = createApi('synctv-lite.tv');
@@ -207,6 +209,10 @@ function Watch({ roomId, onUnpair }: { roomId: string; onUnpair: (reason?: strin
     if (accessLost) onUnpair('This TV was unpaired or lost access to the room.');
   }, [accessLost]);
   usePlayerTick(player);
+  const subtitles = useSubtitles(binding);
+  /** The key handler below binds once; this is always the current render's cycle. */
+  const cycleSubtitles = useRef(subtitles.cycle);
+  cycleSubtitles.current = subtitles.cycle;
   const [overlay, setOverlay] = useState(true);
   const overlayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const unpairArmed = useRef(0);
@@ -264,6 +270,9 @@ function Watch({ roomId, onUnpair }: { roomId: string; onUnpair: (reason?: strin
         case 'prev':
           void engine.prev();
           break;
+        case 'subtitles':
+          cycleSubtitles.current();
+          break;
         case 'unpair':
           // Press the red key twice within 3 s to unpair.
           if (Date.now() - unpairArmed.current < 3000) onUnpair();
@@ -301,10 +310,12 @@ function Watch({ roomId, onUnpair }: { roomId: string; onUnpair: (reason?: strin
   const playing = !!engine && !!player && roomPlaying(engine, player);
   const nothing = !snapshot || !snapshot.source;
   const armed = Date.now() - unpairArmed.current < 3000;
+  const subtitleText = cueTextAt(subtitles.cues, current);
 
   return (
     <main class="tv-watch">
       <video ref={videoRef} class="tv-video" playsInline />
+      {subtitleText && <div class={overlay || !playing ? 'tv-subtitle-line raised' : 'tv-subtitle-line'}>{subtitleText}</div>}
       {nothing && <div class="tv-center">Nothing is playing yet</div>}
       {snapshot && (snapshot.needsGesture || snapshot.autoMuted) && (
         <div class="tv-center small">Press OK to {snapshot.needsGesture ? 'start' : 'turn on sound'}</div>
@@ -325,7 +336,9 @@ function Watch({ roomId, onUnpair }: { roomId: string; onUnpair: (reason?: strin
             {snapshot && snapshot.connection !== 'open' && <span>{snapshot.connection === 'connecting' ? 'Connecting…' : 'Reconnecting…'}</span>}
           </div>
           <div class="tv-hint">
-            OK play/pause · ◀ ▶ ±10 s{armed ? ' · press red again to unpair' : ' · red twice: unpair'}
+            OK play/pause · ◀ ▶ ±10 s
+            {subtitles.tracks.length > 0 && ` · blue: subtitles ${subtitles.current ? `(${subtitles.current.name})` : '(off)'}`}
+            {armed ? ' · press red again to unpair' : ' · red twice: unpair'}
           </div>
         </div>
       )}
