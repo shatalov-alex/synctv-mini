@@ -723,5 +723,33 @@ describe('RoomSyncEngine device status', () => {
     await vi.advanceTimersByTimeAsync(600);
     expect(last(ws)).toMatchObject({ ready: false });
   });
-});
 
+  it('reports a new room state at once, without the position from before it', async () => {
+    const { ws, player, pushAll } = await ready();
+    await pushAll({ playing: true, position: 100 });
+    await vi.advanceTimersByTimeAsync(900);
+    player.currentTime = 101; // keeping up, with the position counted
+    await vi.advanceTimersByTimeAsync(1100);
+    expect(last(ws).position).toBeDefined();
+    const before = statuses(ws).length;
+    player.seek = () => {}; // the seek hasn't happened yet
+    ws.push(stateEvent(state({ isPlaying: true, position: 300, version: '2' })));
+    const first = statuses(ws)[before];
+    expect(first).toMatchObject({ stateVersion: '2' });
+    expect(first.position).toBeUndefined();
+  });
+
+  it('keeps waiting for a video slower than the load timeout, then syncs', async () => {
+    const { ws, player } = await setup();
+    player.ready = false;
+    ws.push(playbackEvent(playback));
+    ws.push(stateEvent(state({ isPlaying: true, position: 50 })));
+    await flush();
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(player.calls).toEqual(['load']);
+    player.ready = true;
+    player.emit('loadedmetadata');
+    await vi.advanceTimersByTimeAsync(10);
+    expect(player.calls).toContain('play');
+  });
+});

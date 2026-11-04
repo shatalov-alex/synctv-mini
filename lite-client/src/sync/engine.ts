@@ -159,6 +159,8 @@ export class RoomSyncEngine implements SyncEngine {
   private pulling = false;
   private lastPullAt = 0;
   private lastStatus = '';
+  /** Room state version the player has been moved to; its position means nothing for a newer one. */
+  private syncedVersion = -1;
 
   constructor(
     private readonly api: ApiClient,
@@ -308,9 +310,13 @@ export class RoomSyncEngine implements SyncEngine {
     }
     const res = this.resolvedFor(s);
     this.update({ state: s, source: res ? res.source : null, live: res ? res.live : false });
+    this.reportStatus(false); // before anything starts, so the room can hold in time
     if (!res || !res.source) return; // wait for the `playback` resource
     const needLoad = res.source.key !== this.loadedKey;
-    if (opts.skipPlayerSync && !needLoad) return;
+    if (opts.skipPlayerSync && !needLoad) {
+      this.syncedVersion = s.version; // our own command: the player is already there
+      return;
+    }
     if (needLoad) {
       await this.load(res.source);
       return;
@@ -364,9 +370,11 @@ export class RoomSyncEngine implements SyncEngine {
       this.update({ error: 'This source needs custom request headers, which browsers cannot send to <video>.' });
     }
     await this.player.load(source);
-    const ready = await this.waitForMetadata(gen);
+    // A slow link can take longer than one wait. The error path or a newer load ends this.
+    while (!(await this.waitForMetadata(gen))) {
+      if (gen !== this.loadGen || this.disposed) return;
+    }
     if (gen !== this.loadGen || this.disposed) return;
-    if (!ready) return; // init timeout; the error path or a later event retries
     this.loadedReady = true;
     this.reportDuration();
     if (this.cur) await this.performSync(this.cur, true); // initial join / media change: forced
@@ -432,6 +440,7 @@ export class RoomSyncEngine implements SyncEngine {
       if (plan.rate !== null) this.player.setRate(plan.rate);
       if (plan.pause) this.player.pause();
       if (plan.seek !== null) this.player.seek(plan.seek);
+      this.syncedVersion = s.version;
       if (!isCurrent()) return;
       if (plan.play) {
         // Seek + start (join, media change, resync): the time spent buffering
@@ -559,7 +568,7 @@ export class RoomSyncEngine implements SyncEngine {
       mediaId: loaded && resolved ? resolved.mediaId : '',
       participating,
       ready: this.deviceReady && !this.pulling,
-      position: loaded && this.caughtUp ? this.player.currentTime : undefined,
+      position: loaded && this.caughtUp && !!s && this.syncedVersion === s.version ? this.player.currentTime : undefined,
       stateVersion: s ? s.version : 0,
     };
   }
