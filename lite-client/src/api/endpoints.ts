@@ -86,6 +86,19 @@ export function addDirectUrlMedia(api: ApiClient, roomId: string, url: string, n
   return api.request('POST', `/api/rooms/${enc(roomId)}/media`, body);
 }
 
+/**
+ * A player learned the media's length. The server keeps it only while none is
+ * known (direct URLs usually arrive without one), so this is safe to send once.
+ */
+export function reportMediaDuration(
+  api: ApiClient,
+  roomId: string,
+  mediaId: string,
+  durationSeconds: number,
+): Promise<{ stored?: boolean; durationSeconds?: number }> {
+  return api.request('PUT', `/api/rooms/${enc(roomId)}/media/${enc(mediaId)}/duration`, { durationSeconds });
+}
+
 export function deleteMedia(api: ApiClient, roomId: string, mediaId: string): Promise<unknown> {
   return api.request('DELETE', `/api/rooms/${enc(roomId)}/media/${enc(mediaId)}`);
 }
