@@ -1,6 +1,6 @@
 // Room WebSocket wire format (format=json): protobuf-JSON text frames, oneof
 // members as keys, enums as integers, int64 as decimal strings, defaults omitted.
-import type { Playback } from '../api/types';
+import type { Media, Playback } from '../api/types';
 import type { WirePlaybackState } from './state';
 
 export const DELIVERY_PUSH_SNAPSHOT = 2;
@@ -17,8 +17,11 @@ export function wsUrl(origin: string, roomId: string, ticket: string): string {
   return `${base}/ws/rooms/${encodeURIComponent(roomId)}?ticket=${encodeURIComponent(ticket)}&format=json`;
 }
 
-export function observeMessages(profile: Record<string, unknown>): unknown[] {
-  return [
+/** Same page size as listRootMedia, so a pushed list matches a fetched one. */
+const PLAYLIST_PAGE_SIZE = 100;
+
+export function observeMessages(profile: Record<string, unknown>, options: { playlist?: boolean } = {}): unknown[] {
+  const messages: unknown[] = [
     { observeResource: { observeId: 'playback_state', deliveryMode: DELIVERY_PUSH_SNAPSHOT, playbackState: {} } },
     {
       observeResource: {
@@ -28,6 +31,16 @@ export function observeMessages(profile: Record<string, unknown>): unknown[] {
       },
     },
   ];
+  if (options.playlist) {
+    messages.push({
+      observeResource: {
+        observeId: 'playlist_items',
+        deliveryMode: DELIVERY_PUSH_SNAPSHOT,
+        playlistItems: { request: { pageSize: PLAYLIST_PAGE_SIZE } },
+      },
+    });
+  }
+  return messages;
 }
 
 export function heartbeatMessage(serverNowMs: number): unknown {
@@ -87,6 +100,7 @@ export function playbackUpdateMessage(cmd: UpdateCommand): unknown {
 export type Incoming =
   | { kind: 'state'; state: WirePlaybackState }
   | { kind: 'playback'; playback: Playback }
+  | { kind: 'playlist'; media: Media[] }
   | { kind: 'gate'; waitingDevices: number; holding: boolean }
   | { kind: 'error'; code: number; message: string; opId: string }
   | { kind: 'termination'; message: string; code: number }
@@ -115,6 +129,8 @@ export function parseIncoming(text: string): Incoming {
     // arrives as {} or with the key omitted entirely.
     if (ev.observeId === 'playback' && !ev.changedOnly) return { kind: 'playback', playback: ev.playback || {} };
     if (ev.observeId === 'playback_state' && !ev.changedOnly) return { kind: 'state', state: ev.playbackState || {} };
+    // An empty playlist omits `media`, or the whole payload.
+    if (ev.observeId === 'playlist_items' && !ev.changedOnly) return { kind: 'playlist', media: ev.playlistItems?.media || [] };
     return { kind: 'other' };
   }
   if (msg.error && typeof msg.error === 'object') {

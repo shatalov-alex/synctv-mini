@@ -9,10 +9,13 @@ export function PlaylistPanel(props: {
   api: ApiClient;
   roomId: string;
   playingMediaId: string;
+  /** Pushed by the room socket; once there it replaces what we fetched. */
+  liveItems: Media[] | null;
   canManage: boolean;
 }) {
-  const { api, roomId, playingMediaId, canManage } = props;
-  const [items, setItems] = useState<Media[] | null>(null);
+  const { api, roomId, playingMediaId, liveItems, canManage } = props;
+  const [fetched, setFetched] = useState<Media[] | null>(null);
+  const items = liveItems || fetched;
   const [error, setError] = useState('');
   const [url, setUrl] = useState('');
   const [name, setName] = useState('');
@@ -21,7 +24,7 @@ export function PlaylistPanel(props: {
   const reload = () =>
     listRootMedia(api, roomId).then(
       (media) => {
-        setItems(media);
+        setFetched(media);
         setError('');
       },
       (e) => setError(errorMessage(e)),
@@ -32,8 +35,14 @@ export function PlaylistPanel(props: {
   }, [roomId]);
   // Re-read the list when playback moves to an item we don't know yet.
   useEffect(() => {
-    if (playingMediaId && items && !items.some((m) => m.id === playingMediaId)) void reload();
+    if (!liveItems && playingMediaId && items && !items.some((m) => m.id === playingMediaId)) void reload();
   }, [playingMediaId]);
+
+  // The socket delivers our own changes too; fetch only without it.
+  const afterChange = async () => {
+    setError('');
+    if (!liveItems) await reload();
+  };
 
   const add = async (event: Event) => {
     event.preventDefault();
@@ -47,7 +56,7 @@ export function PlaylistPanel(props: {
       const media = await addDirectUrlMedia(api, roomId, trimmed, name.trim() || undefined);
       setUrl('');
       setName('');
-      await reload();
+      await afterChange();
       // Start it right away when nothing is playing.
       if (!playingMediaId && media.id) await startPlayback(api, roomId, media.id);
     } catch (e) {
@@ -65,7 +74,7 @@ export function PlaylistPanel(props: {
 
   const remove = async (media: Media) => {
     if (!media.id || !(await confirmAction(`Remove “${media.name || 'this video'}”?`))) return;
-    deleteMedia(api, roomId, media.id).then(reload, (e) => setError(errorMessage(e)));
+    deleteMedia(api, roomId, media.id).then(afterChange, (e) => setError(errorMessage(e)));
   };
 
   return (

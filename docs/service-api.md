@@ -205,6 +205,9 @@ curl -s -X DELETE "$SYNCTV/api/rooms/$ROOM/media/$MEDIA" -H "$AUTH"   # {"succes
 curl -s -X DELETE "$SYNCTV/api/rooms/$ROOM/media" -H "$AUTH" -H 'Content-Type: application/json' -d '{}'
 ```
 
+Open Mini Apps show playlist changes by themselves within a moment, so there is nothing
+to notify after a change.
+
 ### Playback
 
 Start a media (playback starts playing at 0), next / previous, stop:

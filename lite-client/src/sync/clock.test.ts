@@ -104,6 +104,12 @@ describe('ws protocol', () => {
       message: 'conflict',
       opId: 'op',
     });
+    expect(parseIncoming('{"resourceEvent":{"observeId":"playlist_items","playlistItems":{"media":[{"id":"m"}]}}}')).toEqual({
+      kind: 'playlist',
+      media: [{ id: 'm' }],
+    });
+    expect(parseIncoming('{"resourceEvent":{"observeId":"playlist_items"}}')).toEqual({ kind: 'playlist', media: [] });
+    expect(parseIncoming('{"resourceEvent":{"observeId":"playlist_items","changedOnly":{}}}')).toEqual({ kind: 'other' });
     expect(parseIncoming('{"heartbeatAck":{"timestamp":"1"}}')).toEqual({ kind: 'other' });
     expect(parseIncoming('not json')).toEqual({ kind: 'other' });
   });

@@ -122,11 +122,12 @@ async function flush() {
   for (let i = 0; i < 10; i++) await Promise.resolve();
 }
 
-async function setup() {
+async function setup(options: { playlist?: boolean } = {}) {
   const player = fakePlayer();
   const api = fakeApi();
   const engine = new RoomSyncEngine(api as unknown as ApiClient, player as unknown as VideoPlayer, {
     origin: 'https://tv.example',
+    ...options,
   });
   engine.connect('room_1');
   await flush();
@@ -290,6 +291,39 @@ describe('RoomSyncEngine', () => {
     FakeWS.all[1].open();
     expect(FakeWS.all[1].sent.filter((m) => m.observeResource)).toHaveLength(2);
     expect(api.requests.filter((r) => r.path === '/api/tickets')).toHaveLength(2);
+  });
+
+  it('observes the playlist only when asked to, again on every connect', async () => {
+    const { ws, engine } = await setup({ playlist: true });
+    expect(ws.sent.map((m) => m.observeResource.observeId)).toEqual(['playback_state', 'playback', 'playlist_items']);
+    expect(ws.sent[2].observeResource).toMatchObject({ deliveryMode: 2, playlistItems: { request: { pageSize: 100 } } });
+    expect(engine.snapshot().playlist).toBeNull();
+    ws.close();
+    await vi.advanceTimersByTimeAsync(5000);
+    await flush();
+    FakeWS.all[1].open();
+    expect(FakeWS.all[1].sent.map((m) => m.observeResource?.observeId)).toContain('playlist_items');
+  });
+
+  it('keeps the pushed playlist in the snapshot, including an emptied one', async () => {
+    const { ws, engine, player } = await setup({ playlist: true });
+    const seen: unknown[] = [];
+    engine.onState((s) => seen.push(s.playlist));
+    ws.push({ resourceEvent: { observeId: 'playlist_items', playlistItems: { media: [{ id: 'a' }, { id: 'b' }] } } });
+    expect(engine.snapshot().playlist).toEqual([{ id: 'a' }, { id: 'b' }]);
+    ws.push({ resourceEvent: { observeId: 'playlist_items', playlistItems: {} } });
+    expect(engine.snapshot().playlist).toEqual([]);
+    ws.push({ resourceEvent: { observeId: 'playlist_items' } });
+    expect(engine.snapshot().playlist).toEqual([]);
+    expect(seen[seen.length - 1]).toEqual([]);
+    expect(player.calls).toEqual([]);
+  });
+
+  it('a refused playlist observation leaves the playlist unknown', async () => {
+    const { ws, engine } = await setup({ playlist: true });
+    ws.push({ resourceObserveError: { observeId: 'playlist_items', error: { code: 7, message: 'Guests cannot observe playlist items' } } });
+    expect(engine.snapshot().playlist).toBeNull();
+    expect(engine.snapshot().error).toBeNull();
   });
 
   it('sends a heartbeat every 25 s', async () => {
