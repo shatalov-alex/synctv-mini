@@ -1076,6 +1076,7 @@ impl AdminRuntime for ManagementAdminRuntime {
             playlist_id: command.playlist_id,
             target: command.target,
             client_operation_id: None,
+            playing: None,
         };
         self.inner
             .start_playback(
