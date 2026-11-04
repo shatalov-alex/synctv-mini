@@ -34,6 +34,26 @@ export function heartbeatMessage(serverNowMs: number): unknown {
   return { heartbeat: { timestamp: String(Math.round(serverNowMs)) } };
 }
 
+export interface PlayerStatus {
+  mediaId: string;
+  participating: boolean;
+  ready: boolean;
+  /** Omitted until the player has caught up with the room. */
+  position?: number;
+  stateVersion: number;
+}
+
+export function playerStatusMessage(status: PlayerStatus): unknown {
+  const msg: Record<string, unknown> = {
+    mediaId: status.mediaId,
+    participating: status.participating,
+    ready: status.ready,
+    stateVersion: String(status.stateVersion),
+  };
+  if (status.position !== undefined) msg.position = status.position;
+  return { playerStatus: msg };
+}
+
 export interface UpdateCommand {
   kind: UpdateKind;
   playing: boolean;
@@ -67,6 +87,7 @@ export function playbackUpdateMessage(cmd: UpdateCommand): unknown {
 export type Incoming =
   | { kind: 'state'; state: WirePlaybackState }
   | { kind: 'playback'; playback: Playback }
+  | { kind: 'gate'; waitingDevices: number; holding: boolean }
   | { kind: 'error'; code: number; message: string; opId: string }
   | { kind: 'termination'; message: string; code: number }
   | { kind: 'other' };
@@ -79,6 +100,13 @@ export function parseIncoming(text: string): Incoming {
     return { kind: 'other' };
   }
   if (!msg || typeof msg !== 'object') return { kind: 'other' };
+  if (msg.playbackGate && typeof msg.playbackGate === 'object') {
+    return {
+      kind: 'gate',
+      waitingDevices: Number(msg.playbackGate.waitingDevices) || 0,
+      holding: !!msg.playbackGate.holding,
+    };
+  }
   const ev = msg.resourceEvent;
   if (ev && typeof ev === 'object') {
     if (ev.playbackState && ev.observeId === 'playback_state') return { kind: 'state', state: ev.playbackState };

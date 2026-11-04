@@ -396,6 +396,14 @@ html.tv-mode body {
   font-size: 18px;
   color: #aaa;
 }
+.tv-waiting {
+  position: absolute;
+  bottom: 24px;
+  left: 4vw;
+  right: 4vw;
+  color: #fff;
+  font-size: 22px;
+}
 .tv-error {
   position: absolute;
   top: 24px;

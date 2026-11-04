@@ -23,6 +23,8 @@ import {
   terminationLosesAccess,
   wsUrl,
   type UpdateKind,
+  playerStatusMessage,
+  type PlayerStatus,
 } from './protocol';
 import {
   expectedPosition,
@@ -36,6 +38,11 @@ import {
   SYNC_COOLDOWN_MS,
   SYNC_LOOP_MS,
   type SyncState,
+  AUTO_SEEK_THRESHOLD_S,
+  MAX_PULL_BACK_S,
+  STALL_GRACE_MS,
+  nextReady,
+  shouldPullBack,
 } from './state';
 import type { SyncEngine, SyncSnapshot } from './types';
 
@@ -49,6 +56,7 @@ export const BACKGROUND_RECONNECT_MS = 15_000;
 /** Past the sync cooldown, so the first frames have played before measuring drift. */
 const SETTLE_DELAY_MS = SYNC_COOLDOWN_MS + 200;
 const MAX_ERROR_RELOADS = 3;
+const PULL_BACK_WAIT_MS = 4000;
 /** Reloads this far apart are separate incidents (e.g. each 30 min URL expiry of a long film). */
 const ERROR_RELOAD_WINDOW_MS = 60_000;
 /** "Completed" tolerance for play-from-end (custom_video_player.dart:1769). */
@@ -105,6 +113,7 @@ export class RoomSyncEngine implements SyncEngine {
     navigating: false,
     accessLost: null,
     remote: false,
+    waitingDevices: 0,
   };
 
   // sync state
@@ -141,6 +150,15 @@ export class RoomSyncEngine implements SyncEngine {
   /** Bumped per openSocket so an older, slower ticket request can't open a second socket. */
   private connectGen = 0;
   private lifecycleBound = false;
+  /** What the room's gate knows about this device (see reportStatus()). */
+  private deviceReady = false;
+  private stalledSince = 0;
+  private stallTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The player has been within the sync threshold since it (re)joined; only then does its position count. */
+  private caughtUp = false;
+  private pulling = false;
+  private lastPullAt = 0;
+  private lastStatus = '';
 
   constructor(
     private readonly api: ApiClient,
@@ -165,6 +183,7 @@ export class RoomSyncEngine implements SyncEngine {
       else if (event.type === 'autoplayblocked') this.update({ needsGesture: true });
       else if (event.type === 'error') this.onPlayerError(event.message || 'Playback error');
       else if (event.type === 'playing') this.settle();
+      this.onPlayerProgress(event.type);
     });
   }
 
@@ -259,6 +278,7 @@ export class RoomSyncEngine implements SyncEngine {
     this.disposed = true;
     this.bindLifecycle(false);
     if (this.settleTimer !== null) clearTimeout(this.settleTimer);
+    if (this.stallTimer !== null) clearTimeout(this.stallTimer);
     this.clock.stop();
     if (this.loopTimer !== null) clearInterval(this.loopTimer);
     this.loopTimer = null;
@@ -272,6 +292,7 @@ export class RoomSyncEngine implements SyncEngine {
 
   private async apply(s: SyncState, opts: { forceSeek?: boolean; skipPlayerSync?: boolean } = {}): Promise<void> {
     if (isStale(s, this.cur)) return;
+    this.pulling = false;
     const prev = this.cur;
     const sourceChanged = !!prev && !sameSource(prev, s);
     // Deviation from the official client: seek precisely (0.2 s) while the room
@@ -338,6 +359,7 @@ export class RoomSyncEngine implements SyncEngine {
     this.playbackFailed = false;
     this.loadedKey = source.key;
     this.loadedReady = false;
+    this.caughtUp = false;
     if (source.requiresHeaders) {
       this.update({ error: 'This source needs custom request headers, which browsers cannot send to <video>.' });
     }
@@ -445,9 +467,27 @@ export class RoomSyncEngine implements SyncEngine {
   }
 
   private retryLoop(): void {
+    this.correct();
+    this.reportStatus(true);
+  }
+
+  private correct(): void {
     if (this.snap.remote) return;
     if (this.syncing || this.freeMode || !this.cur || !this.loadedReady || !this.player.ready) return;
     if (!this.resolvedFor(this.cur)) return;
+    if (!this.snap.live) {
+      const now = this.clock.now();
+      const drift = Math.abs(this.player.currentTime - expectedPosition(this.cur, now, this.player.duration).position);
+      if (drift > MAX_PULL_BACK_S) this.caughtUp = false;
+      else if (drift <= AUTO_SEEK_THRESHOLD_S) this.caughtUp = true;
+      if (this.pulling && Date.now() - this.lastPullAt < PULL_BACK_WAIT_MS) return; // the room is about to move back
+      this.pulling = false;
+      if (this.caughtUp && shouldPullBack(this.cur, this.playerView(), now, Date.now() - this.lastPullAt)) {
+        this.lastPullAt = Date.now();
+        this.pulling = true;
+        return;
+      }
+    }
     if (needsCorrection(this.cur, this.playerView(), this.clock.now(), { live: this.snap.live })) {
       void this.performSync(this.cur);
     }
@@ -459,6 +499,68 @@ export class RoomSyncEngine implements SyncEngine {
       paused: this.player.paused,
       playbackRate: this.player.playbackRate,
       duration: this.player.duration,
+    };
+  }
+
+  private onPlayerProgress(type: string): void {
+    if (type === 'waiting') {
+      if (!this.stalledSince) this.stalledSince = Date.now();
+      if (this.stallTimer === null) {
+        this.stallTimer = setTimeout(() => {
+          this.stallTimer = null;
+          this.reportStatus(false);
+        }, STALL_GRACE_MS);
+      }
+    } else if (type === 'playing' || type === 'canplay' || type === 'seeked' || type === 'pause') {
+      this.stalledSince = 0;
+    }
+    if (type !== 'timeupdate') this.reportStatus(false);
+  }
+
+  /**
+   * Tells the room whether this device can play, so it holds until everyone can. `always` is
+   * the periodic report, which also shows the server this device is still there.
+   */
+  private reportStatus(always: boolean): void {
+    const ws = this.ws;
+    if (!ws || ws.readyState !== 1) return;
+    const status = this.playerStatus();
+    const key = JSON.stringify({ ...status, position: undefined });
+    if (!always && key === this.lastStatus) return;
+    this.lastStatus = key;
+    this.send(playerStatusMessage(status));
+  }
+
+  private playerStatus(): PlayerStatus {
+    const s = this.cur;
+    const resolved = s ? this.resolvedFor(s) : null;
+    const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
+    const participating =
+      !!s &&
+      hasSource(s) &&
+      (!resolved || !!resolved.source) &&
+      !this.snap.remote &&
+      !this.snap.live &&
+      !this.freeMode &&
+      !this.snap.needsGesture &&
+      !this.playbackFailed &&
+      !hidden;
+    const loaded = this.loadedReady && !!resolved && resolved.source?.key === this.loadedKey;
+    this.deviceReady = nextReady(this.deviceReady, {
+      loaded,
+      paused: this.player.paused,
+      buffering: this.player.buffering,
+      stalledMs: this.stalledSince ? Date.now() - this.stalledSince : 0,
+      readyState: this.player.readyState,
+      bufferedAhead: this.player.bufferedAhead,
+      atEnd: !!s && expectedPosition(s, this.clock.now(), this.player.duration).atEnd,
+    });
+    return {
+      mediaId: loaded && resolved ? resolved.mediaId : '',
+      participating,
+      ready: this.deviceReady && !this.pulling,
+      position: loaded && this.caughtUp ? this.player.currentTime : undefined,
+      stateVersion: s ? s.version : 0,
     };
   }
 
@@ -602,6 +704,9 @@ export class RoomSyncEngine implements SyncEngine {
       // handled without state: our superseded op or a duplicate ack → drop
     } else if (msg.kind === 'playback') {
       this.onPlayback(msg.playback);
+    } else if (msg.kind === 'gate') {
+      const waitingDevices = msg.holding ? msg.waitingDevices : 0;
+      if (waitingDevices !== this.snap.waitingDevices) this.update({ waitingDevices });
     } else if (msg.kind === 'error') {
       if (msg.opId) {
         const r = this.ops.reject(msg.opId);
@@ -620,6 +725,8 @@ export class RoomSyncEngine implements SyncEngine {
     if (typeof document === 'undefined') return;
     if (document.visibilityState === 'hidden') {
       this.hiddenAt = Date.now();
+      this.caughtUp = false;
+      this.reportStatus(false);
       return;
     }
     const away = this.hiddenAt ? Date.now() - this.hiddenAt : 0;
@@ -695,7 +802,9 @@ export class RoomSyncEngine implements SyncEngine {
       if (this.ws !== ws) return;
       this.clearConnectTimer();
       this.attempts = 0;
-      this.update({ connection: 'open' });
+      this.caughtUp = false;
+      this.lastStatus = '';
+      this.update({ connection: 'open', waitingDevices: 0 });
       // Same observation list on every connect → fresh full snapshots.
       for (const m of observeMessages(buildClientProfile())) this.send(m);
       this.heartbeatTimer = setInterval(() => this.send(heartbeatMessage(this.clock.now())), HEARTBEAT_MS);

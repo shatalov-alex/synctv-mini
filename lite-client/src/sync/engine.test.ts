@@ -50,6 +50,8 @@ function fakePlayer() {
     muted: false,
     currentSource: null as unknown,
     buffering: false,
+    readyState: 4,
+    bufferedAhead: 30,
     listeners: [] as Array<(e: { type: string }) => void>,
     on: (l: (e: { type: string }) => void) => {
       p.listeners.push(l);
@@ -643,3 +645,83 @@ describe('RoomSyncEngine remote mode (a paired TV plays, the phone controls)', (
     expect(player.paused).toBe(true);
   });
 });
+
+describe('RoomSyncEngine device status', () => {
+  afterEach(() => vi.useRealTimers());
+  const statuses = (ws: FakeWS) => ws.sent.filter((m) => m.playerStatus).map((m) => m.playerStatus);
+  const last = (ws: FakeWS) => statuses(ws)[statuses(ws).length - 1];
+
+  async function ready() {
+    const ctx = await setup();
+    const pushAll = async (over: { playing: boolean; position: number }) => {
+      ctx.ws.push(playbackEvent(playback));
+      ctx.ws.push(stateEvent(state({ isPlaying: over.playing, position: over.position })));
+      await flush();
+    };
+    return { ...ctx, pushAll };
+  }
+
+  it('reports not ready until the video has loaded enough, then ready', async () => {
+    const { ws, player, pushAll } = await ready();
+    player.readyState = 1;
+    player.bufferedAhead = 0;
+    await pushAll({ playing: false, position: 10 });
+    await vi.advanceTimersByTimeAsync(2100);
+    expect(last(ws)).toMatchObject({ participating: true, ready: false, mediaId: playback.mediaId });
+    player.readyState = 4;
+    await vi.advanceTimersByTimeAsync(2100);
+    expect(last(ws)).toMatchObject({ participating: true, ready: true, mediaId: playback.mediaId });
+  });
+
+  it('does not count as a player in remote mode', async () => {
+    const { ws, engine, pushAll } = await ready();
+    await pushAll({ playing: false, position: 10 });
+    engine.setRemote(true);
+    await vi.advanceTimersByTimeAsync(2100);
+    expect(last(ws)).toMatchObject({ participating: false });
+  });
+
+  it('shows how many devices the room waits for, only while it is held', async () => {
+    const { ws, engine } = await ready();
+    ws.push({ playbackGate: { waitingDevices: 2, holding: true } });
+    expect(engine.snapshot().waitingDevices).toBe(2);
+    ws.push({ playbackGate: { waitingDevices: 1 } });
+    expect(engine.snapshot().waitingDevices).toBe(0);
+  });
+
+  it('moves the room back when it falls behind instead of jumping ahead', async () => {
+    const { ws, player, pushAll } = await ready();
+    await pushAll({ playing: true, position: 100 });
+    await vi.advanceTimersByTimeAsync(900); // past the sync cooldown
+    player.currentTime = 102; // keeping up with the room at the next check
+    await vi.advanceTimersByTimeAsync(1100);
+    player.currentTime = 94; // a stall the player has just come out of
+    player.calls.length = 0;
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(player.calls.filter((c: string) => c.startsWith('seek'))).toEqual([]);
+    expect(last(ws)).toMatchObject({ ready: false });
+    expect(last(ws).position).toBeCloseTo(player.currentTime, 1);
+  });
+
+  it('a device that just joined jumps to the room and moves nobody', async () => {
+    const { ws, player, pushAll } = await ready();
+    player.currentTime = 0;
+    await pushAll({ playing: true, position: 100 });
+    expect(player.currentTime).toBeGreaterThan(99);
+    const positions = statuses(ws).map((s: { position?: number }) => s.position).filter((p: number | undefined) => p !== undefined);
+    expect(positions.every((p: number) => p > 99)).toBe(true);
+  });
+
+  it('reports a stall only after the grace period', async () => {
+    const { ws, player, pushAll } = await ready();
+    await pushAll({ playing: true, position: 100 });
+    await vi.advanceTimersByTimeAsync(2100);
+    player.buffering = true;
+    player.emit('waiting');
+    await vi.advanceTimersByTimeAsync(500);
+    expect(last(ws)).toMatchObject({ ready: true });
+    await vi.advanceTimersByTimeAsync(600);
+    expect(last(ws)).toMatchObject({ ready: false });
+  });
+});
+

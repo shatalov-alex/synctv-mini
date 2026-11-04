@@ -82,6 +82,10 @@ function useFullscreen(container: HTMLElement | null) {
   return { on, toggle };
 }
 
+function waitingText(devices: number): string {
+  return `Waiting for ${devices} ${devices === 1 ? 'device' : 'devices'} to load the video…`;
+}
+
 export function PlayerPanel({
   binding,
   compact,
@@ -241,6 +245,7 @@ export function PlayerPanel({
             </button>
           </div>
         )}
+        {snapshot && snapshot.waitingDevices > 0 && <div class="small">{waitingText(snapshot.waitingDevices)}</div>}
         {snapshot && snapshot.error && <div class="error small">{snapshot.error}</div>}
       </div>
     </div>
