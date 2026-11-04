@@ -20,7 +20,10 @@ export function wsUrl(origin: string, roomId: string, ticket: string): string {
 /** Same page size as listRootMedia, so a pushed list matches a fetched one. */
 const PLAYLIST_PAGE_SIZE = 100;
 
-export function observeMessages(profile: Record<string, unknown>, options: { roomDetails?: boolean } = {}): unknown[] {
+export function observeMessages(
+  profile: Record<string, unknown>,
+  options: { roomDetails?: boolean; roomSettings?: boolean } = {},
+): unknown[] {
   const messages: unknown[] = [
     { observeResource: { observeId: 'playback_state', deliveryMode: DELIVERY_PUSH_SNAPSHOT, playbackState: {} } },
     {
@@ -40,10 +43,12 @@ export function observeMessages(profile: Record<string, unknown>, options: { roo
           playlistItems: { request: { pageSize: PLAYLIST_PAGE_SIZE } },
         },
       },
-      { observeResource: { observeId: 'room_settings', deliveryMode: DELIVERY_PUSH_SNAPSHOT, roomSettings: {} } },
       { observeResource: { observeId: 'room_members', deliveryMode: DELIVERY_PUSH_SNAPSHOT, roomMemberEvents: {} } },
       { observeResource: { observeId: 'room_online', deliveryMode: DELIVERY_PUSH_SNAPSHOT, onlineEvent: {} } },
     );
+  }
+  if (options.roomDetails || options.roomSettings) {
+    messages.push({ observeResource: { observeId: 'room_settings', deliveryMode: DELIVERY_PUSH_SNAPSHOT, roomSettings: {} } });
   }
   return messages;
 }
@@ -104,11 +109,21 @@ export function playbackUpdateMessage(cmd: UpdateCommand): unknown {
 
 const ONLINE_EVENT_JOINED = 1;
 
+export interface TvSubtitles {
+  enabled: boolean;
+  track: string;
+}
+
+/** An older room's settings may lack this: on. Once present, false and "" are omitted on the wire. */
+function parseTvSubtitles(wire: { enabled?: boolean; track?: string } | undefined): TvSubtitles {
+  return wire ? { enabled: !!wire.enabled, track: wire.track || '' } : { enabled: true, track: '' };
+}
+
 export type Incoming =
   | { kind: 'state'; state: WirePlaybackState }
   | { kind: 'playback'; playback: Playback }
   | { kind: 'playlist'; media: Media[] }
-  | { kind: 'settings'; autoPlay: boolean }
+  | { kind: 'settings'; autoPlay: boolean; tvSubtitles: TvSubtitles }
   | { kind: 'members' }
   | { kind: 'gate'; waitingDevices: number; holding: boolean }
   | { kind: 'error'; code: number; message: string; opId: string }
@@ -140,7 +155,10 @@ export function parseIncoming(text: string): Incoming {
     if (ev.observeId === 'playback_state' && !ev.changedOnly) return { kind: 'state', state: ev.playbackState || {} };
     // An empty playlist omits `media`, or the whole payload.
     if (ev.observeId === 'playlist_items' && !ev.changedOnly) return { kind: 'playlist', media: ev.playlistItems?.media || [] };
-    if (ev.observeId === 'room_settings' && ev.roomSettings) return { kind: 'settings', autoPlay: !!ev.roomSettings.settings?.autoPlay?.enabled };
+    if (ev.observeId === 'room_settings' && ev.roomSettings) {
+      const settings = ev.roomSettings.settings;
+      return { kind: 'settings', autoPlay: !!settings?.autoPlay?.enabled, tvSubtitles: parseTvSubtitles(settings?.tvSubtitles) };
+    }
     if (ev.observeId === 'room_members' && ev.roomMemberEvent) return { kind: 'members' };
     // A newly paired TV joins silently: the first sign of it is coming online. ONLINE_EVENT_KIND_JOINED = 1.
     if (ev.observeId === 'room_online' && ev.onlineEvent && ev.onlineEvent.kind === ONLINE_EVENT_JOINED) return { kind: 'members' };

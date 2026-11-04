@@ -1093,6 +1093,10 @@ fn room_settings_to_client_proto(
         chat_enabled: settings.chat_enabled.0,
         voice_chat_enabled: settings.voice_chat_enabled.0,
         p2p_media_enabled: settings.p2p_media_enabled.0,
+        tv_subtitles: Some(client_proto::TvSubtitles {
+            enabled: settings.tv_subtitles.enabled,
+            track: settings.tv_subtitles.track.clone(),
+        }),
         auto_play: Some(client_proto::AutoPlaySettings {
             enabled: settings.auto_play.value.enabled,
             mode: match settings.auto_play.value.mode {

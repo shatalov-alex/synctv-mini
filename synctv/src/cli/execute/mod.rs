@@ -1119,6 +1119,7 @@ pub(in crate::cli) fn room_settings_patch_to_full_settings(
         p2p_media_enabled: patch
             .p2p_media_enabled
             .unwrap_or(defaults.p2p_media_enabled.0),
+        tv_subtitles: None,
         auto_play: Some(synctv_proto::client::AutoPlaySettings {
             enabled: auto_play_patch.enabled.unwrap_or(default_auto_play.enabled),
             mode: auto_play_mode,

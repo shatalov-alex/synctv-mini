@@ -163,7 +163,9 @@ curl -s -X POST "$SYNCTV/api/rooms/$ROOM/media" -H "$AUTH" -H 'Content-Type: app
 Subtitles are separate files listed next to the video. WebVTT is the format to send;
 the players also read SRT, and the text of ASS. The first one listed is on by default,
 unless `defaultSubtitleIndex` names another. Each viewer can turn them off or pick another
-one on their own device; this doesn't affect anyone else. Subtitles inside the video file
+one on their own device; this doesn't affect anyone else. The room's TVs share one choice,
+set from a phone in remote mode or the TV's blue key, or with
+`PUT /api/rooms/$ROOM/tvs/subtitles` and `{"enabled": true, "track": "en|English"}`. Subtitles inside the video file
 are not read.
 
 ```sh

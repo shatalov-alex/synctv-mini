@@ -239,6 +239,25 @@ impl RoomSetting for AutoPlay {
 
 use serde::{Deserialize, Serialize};
 
+/// What the room's TVs show. Not part of [`RoomSettingsPatch`]: anyone who may control
+/// playback changes it, through its own call, without managing the room's settings.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TvSubtitles {
+    pub enabled: bool,
+    /// The chosen track, as "language|name"; empty for the media's default.
+    pub track: String,
+}
+
+impl Default for TvSubtitles {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            track: String::new(),
+        }
+    }
+}
+
 /// Room settings composed of individual type-safe settings
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -268,6 +287,8 @@ pub struct RoomSettings {
     pub guest_added_permissions: GuestAddedPermissions,
     #[serde(default)]
     pub guest_removed_permissions: GuestRemovedPermissions,
+    #[serde(default)]
+    pub tv_subtitles: TvSubtitles,
 }
 
 #[derive(Debug, Default, Clone)]

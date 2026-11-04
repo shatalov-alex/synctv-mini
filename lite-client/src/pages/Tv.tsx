@@ -200,7 +200,7 @@ function bindMediaSession(handlers: Record<SessionAction, () => void>): () => vo
 }
 
 function Watch({ roomId, onUnpair }: { roomId: string; onUnpair: (reason?: string) => void }) {
-  const binding = usePlayer(tvApi, roomId);
+  const binding = usePlayer(tvApi, roomId, { roomSettings: true });
   const { engine, player, snapshot, videoRef } = binding;
   const accessLost = snapshot ? snapshot.accessLost : null;
 
@@ -209,7 +209,7 @@ function Watch({ roomId, onUnpair }: { roomId: string; onUnpair: (reason?: strin
     if (accessLost) onUnpair('This TV was unpaired or lost access to the room.');
   }, [accessLost]);
   usePlayerTick(player);
-  const subtitles = useSubtitles(binding);
+  const subtitles = useSubtitles(binding, { tv: true });
   /** The key handler below binds once; this is always the current render's cycle. */
   const cycleSubtitles = useRef(subtitles.cycle);
   cycleSubtitles.current = subtitles.cycle;
@@ -315,7 +315,11 @@ function Watch({ roomId, onUnpair }: { roomId: string; onUnpair: (reason?: strin
   return (
     <main class="tv-watch">
       <video ref={videoRef} class="tv-video" playsInline />
-      {subtitleText && <div class={overlay || !playing ? 'tv-subtitle-line raised' : 'tv-subtitle-line'}>{subtitleText}</div>}
+      {subtitleText && (
+        <div class={overlay || !playing ? 'tv-subtitle-line raised' : 'tv-subtitle-line'}>
+          <span>{subtitleText}</span>
+        </div>
+      )}
       {nothing && <div class="tv-center">Nothing is playing yet</div>}
       {snapshot && (snapshot.needsGesture || snapshot.autoMuted) && (
         <div class="tv-center small">Press OK to {snapshot.needsGesture ? 'start' : 'turn on sound'}</div>

@@ -994,6 +994,10 @@ fn register_all_routes() -> Router<AppState> {
                 .route("/api/tv/pairings/claim", post(tv_pairing::claim_tv_pairing))
                 .route("/api/rooms/{roomId}/tvs", get(tv_pairing::list_tv_devices))
                 .route(
+                    "/api/rooms/{roomId}/tvs/subtitles",
+                    axum::routing::put(tv_pairing::set_tv_subtitles),
+                )
+                .route(
                     "/api/rooms/{roomId}/tvs/{userId}/revoke",
                     post(tv_pairing::revoke_tv_device),
                 )

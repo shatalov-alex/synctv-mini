@@ -37,6 +37,13 @@ pub(crate) fn room_settings_from_client_proto(
         p2p_media_enabled: synctv_core::models::room_settings::P2pMediaEnabled::new(
             settings.p2p_media_enabled,
         ),
+        tv_subtitles: settings
+            .tv_subtitles
+            .map(|tv| synctv_core::models::room_settings::TvSubtitles {
+                enabled: tv.enabled,
+                track: tv.track,
+            })
+            .unwrap_or_default(),
         auto_play: synctv_core::models::room_settings::AutoPlay::new(
             synctv_core::models::AutoPlaySettings {
                 enabled: auto_play.enabled,
@@ -265,6 +272,7 @@ mod tests {
         let settings = room_settings_from_client_proto(synctv_proto::client::RoomSettings {
             voice_chat_enabled: false,
             p2p_media_enabled: false,
+            tv_subtitles: None,
             ..Default::default()
         })
         .expect("room settings should map");

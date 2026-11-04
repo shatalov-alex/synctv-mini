@@ -265,21 +265,56 @@ impl RoomService {
         settings: RoomSettings,
         outbox_event_factory: Option<RealtimeOutboxSettingsEventFactory>,
     ) -> Result<crate::cache::RoomSettingsSnapshot> {
-        self.permission_service
-            .check_permission(
-                &room_id,
-                &user_id,
-                crate::models::RoomPermission::MANAGE_ROOM_SETTINGS,
-            )
-            .await?;
-
         self.validate_room_settings(&settings)?;
+        let settings = std::sync::Arc::new(settings);
+        self.write_settings_with_outbox(
+            room_id,
+            user_id,
+            crate::models::RoomPermission::MANAGE_ROOM_SETTINGS,
+            move |_current| (*settings).clone(),
+            outbox_event_factory,
+        )
+        .await
+    }
+
+    /// Set what the room's TVs show. For whoever may control playback, as the remote does.
+    pub async fn set_tv_subtitles_with_outbox(
+        &self,
+        room_id: RoomId,
+        user_id: UserId,
+        tv_subtitles: crate::models::room_settings::TvSubtitles,
+        outbox_event_factory: Option<RealtimeOutboxSettingsEventFactory>,
+    ) -> Result<crate::cache::RoomSettingsSnapshot> {
+        self.write_settings_with_outbox(
+            room_id,
+            user_id,
+            crate::models::RoomPermission::CONTROL_PLAYBACK_STATE,
+            move |current| RoomSettings {
+                tv_subtitles: tv_subtitles.clone(),
+                ..current.clone()
+            },
+            outbox_event_factory,
+        )
+        .await
+    }
+
+    async fn write_settings_with_outbox(
+        &self,
+        room_id: RoomId,
+        user_id: UserId,
+        permission: crate::models::RoomPermission,
+        apply: impl Fn(&RoomSettings) -> RoomSettings + Send + Sync,
+        outbox_event_factory: Option<RealtimeOutboxSettingsEventFactory>,
+    ) -> Result<crate::cache::RoomSettingsSnapshot> {
+        self.permission_service
+            .check_permission(&room_id, &user_id, permission)
+            .await?;
 
         self.room_repo
             .get_by_id(&room_id)
             .await?
             .ok_or_else(|| Error::NotFound("Room not found".to_string()))?;
-        let settings = std::sync::Arc::new(settings);
+        let apply = &apply;
 
         let (previous_settings, updated_settings, updated_version) =
             optimistic_retry::retry_with_optimistic_lock_timeout(
@@ -288,18 +323,17 @@ impl RoomService {
                 std::time::Duration::from_secs(SETTINGS_UPDATE_TIMEOUT_SECS),
                 "Settings update failed after maximum retry attempts",
                 || {
-                    let settings = settings.clone();
                     let outbox_event_factory = outbox_event_factory.clone();
                     async move {
                         let (current, version) =
                             self.room_settings_repo.get_with_version(&room_id).await?;
-                        let updated_settings = (*settings).clone();
+                        let updated_settings = apply(&current);
                         let mut tx = self.pool.begin().await?;
                         self.ensure_actor_has_room_permission_now_tx(
                             &mut tx,
                             &room_id,
                             &user_id,
-                            crate::models::RoomPermission::MANAGE_ROOM_SETTINGS,
+                            permission,
                         )
                         .await?;
                         let domain = CacheDomain::RoomSettings { room_id };
