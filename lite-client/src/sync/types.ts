@@ -35,7 +35,7 @@ export interface SyncSnapshot {
   autoPlay: boolean | null;
   /** What the room's TVs show; null without room settings or before the first push. */
   tvSubtitles: TvSubtitles | null;
-  /** Bumped whenever someone comes online in the room, or leaves or is removed from it. */
+  /** Bumped whenever someone comes online or goes offline in the room, or leaves or is removed from it. */
   memberChanges: number;
 }
 

@@ -5776,3 +5776,34 @@ message SetTvSubtitlesRequest {
 }
 
 message SetTvSubtitlesResponse {}
+
+// HTTP API: GET /api/rooms/{room_id}/viewers
+message RoomViewer {
+  string user_id = 1;
+  // Telegram name; empty for an account without one.
+  string first_name = 2;
+  string last_name = 3;
+  string telegram_username = 4;
+  // Local account name, for an account without a Telegram name.
+  string username = 5;
+  bool is_online = 6;
+  bool is_creator = 7;
+  bool is_tv = 8;
+  // A TV's: whoever paired it; empty if that account is gone.
+  string paired_by_name = 9;
+}
+
+message ListRoomViewersResponse {
+  repeated RoomViewer viewers = 1;
+}
+
+// HTTP API: POST /api/user/telegram-profile
+message RefreshTelegramProfileRequest {
+  // Raw `Telegram.WebApp.initData`.
+  string init_data = 1 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 8192
+  }];
+}
+
+message RefreshTelegramProfileResponse {}

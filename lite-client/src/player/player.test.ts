@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { subtitleEntry } from '../api/endpoints';
 import { EchoGuard } from './echo';
 import { preferNativeHls, isRefusal } from './player';
 import { isHlsSource, pickSource } from './source';
@@ -116,5 +117,15 @@ describe('pickSource subtitles', () => {
     const source = pickSource(playback({ direct: [{ url: 'https://x/1.vtt' }, { language: 'uk', url: 'https://x/2.vtt' }] }, 1));
     expect(source?.subtitles.map((t) => t.name)).toEqual(['Subtitles 1', 'uk']);
     expect(source?.defaultSubtitleIndex).toBe(1);
+  });
+});
+
+describe('subtitleEntry', () => {
+  it('takes the format from the link', () => {
+    expect(subtitleEntry('https://x/a.VTT?t=1').format).toBe('vtt');
+    expect(subtitleEntry('https://x/a.srt').format).toBe('srt');
+  });
+  it('leaves the format out when the link does not say', () => {
+    expect(subtitleEntry('https://x/subs?id=1').format).toBeUndefined();
   });
 });

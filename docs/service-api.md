@@ -233,6 +233,9 @@ curl -s -X DELETE "$SYNCTV/api/rooms/$ROOM/media/$MEDIA" -H "$AUTH"   # {"succes
 curl -s -X DELETE "$SYNCTV/api/rooms/$ROOM/media" -H "$AUTH" -H 'Content-Type: application/json' -d '{}'
 ```
 
+Deleting the media being played needs `?force=true`, or the answer is 400. Playback then
+stops for the room. Clearing the playlist needs no flag and stops playback too.
+
 Open Mini Apps show playlist changes by themselves within a moment, so there is nothing
 to notify after a change.
 

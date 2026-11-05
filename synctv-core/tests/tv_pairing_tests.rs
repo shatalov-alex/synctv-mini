@@ -19,6 +19,7 @@ fn telegram_user(id: i64, first_name: &str) -> TelegramInitData {
     TelegramInitData {
         user_id: id,
         first_name: first_name.to_string(),
+        last_name: None,
         username: None,
         start_param: None,
         auth_date: 0,

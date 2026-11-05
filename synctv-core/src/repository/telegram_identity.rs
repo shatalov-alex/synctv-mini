@@ -5,6 +5,15 @@
 use crate::{models::UserId, Result};
 use sqlx::PgPool;
 
+/// The Telegram name of a local user.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TelegramProfile {
+    pub user_id: UserId,
+    pub first_name: String,
+    pub last_name: Option<String>,
+    pub username: Option<String>,
+}
+
 #[derive(Clone)]
 pub struct TelegramIdentityRepository {
     pool: PgPool,
@@ -31,26 +40,46 @@ impl TelegramIdentityRepository {
         Ok(user_id)
     }
 
+    /// The Telegram names of those of `user_ids` that have one.
+    pub async fn profiles_for_users(&self, user_ids: &[UserId]) -> Result<Vec<TelegramProfile>> {
+        let ids: Vec<i64> = user_ids.iter().map(UserId::as_i64).collect();
+        let profiles = sqlx::query_as!(
+            TelegramProfile,
+            r#"
+            SELECT user_id AS "user_id: UserId", first_name, last_name, username
+            FROM auth_telegram_identities
+            WHERE user_id = ANY($1)
+            "#,
+            &ids,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(profiles)
+    }
+
     /// Map `telegram_user_id` to `user_id`, refreshing the display fields if already mapped.
     pub async fn upsert(
         &self,
         telegram_user_id: i64,
         user_id: &UserId,
         first_name: &str,
+        last_name: Option<&str>,
         username: Option<&str>,
     ) -> Result<()> {
         sqlx::query!(
             r#"
-            INSERT INTO auth_telegram_identities (telegram_user_id, user_id, first_name, username)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO auth_telegram_identities (telegram_user_id, user_id, first_name, last_name, username)
+            VALUES ($1, $2, $3, $4, $5)
             ON CONFLICT (telegram_user_id) DO UPDATE
                SET user_id = EXCLUDED.user_id,
                    first_name = EXCLUDED.first_name,
+                   last_name = EXCLUDED.last_name,
                    username = EXCLUDED.username
             "#,
             telegram_user_id,
             user_id.as_i64(),
             first_name,
+            last_name,
             username,
         )
         .execute(&self.pool)

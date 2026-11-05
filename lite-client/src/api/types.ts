@@ -34,6 +34,18 @@ export interface Room {
   createdAt?: Int64;
 }
 
+export interface RoomViewer {
+  userId?: string;
+  firstName?: string;
+  lastName?: string;
+  telegramUsername?: string;
+  username?: string;
+  isOnline?: boolean;
+  isCreator?: boolean;
+  isTv?: boolean;
+  pairedByName?: string;
+}
+
 export interface MyRoom {
   room?: Room;
   role?: string;

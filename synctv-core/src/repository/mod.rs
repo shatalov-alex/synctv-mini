@@ -100,7 +100,7 @@ pub use room_settings::RoomSettingsRepository;
 pub use room_taxonomy::RoomTaxonomyRepository;
 pub use settings::SettingsRepository;
 pub use system_stats::{SystemStats, SystemStatsRepository};
-pub use telegram_identity::TelegramIdentityRepository;
+pub use telegram_identity::{TelegramIdentityRepository, TelegramProfile};
 pub use totp_credential::{TotpCredential, TotpCredentialRepository};
 pub use tv_pairing::{
     ConsumedTvPairing, TvDevice, TvDeviceRepository, TvDeviceSummary, TvPairing,

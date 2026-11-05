@@ -13,6 +13,7 @@ import type {
   RedeemInviteResponse,
   Room,
   RoomInvite,
+  RoomViewer,
   User,
 } from './types';
 
@@ -74,13 +75,29 @@ export async function listRootMedia(api: ApiClient, roomId: string): Promise<Med
 /** PlaybackProxyMode.PLAYBACK_PROXY_MODE_ONLY (source_config.proto). */
 export const PROXY_MODE_ONLY = 2;
 
-export function addDirectUrlMedia(api: ApiClient, roomId: string, url: string, name?: string): Promise<Media> {
+/** The one subtitle file of a video added by hand. */
+export function subtitleEntry(url: string): { name: string; url: string; format?: string } {
+  const extension = /\.(vtt|srt|ass)(?:$|[?#])/i.exec(url);
+  const entry: { name: string; url: string; format?: string } = { name: 'Subtitles', url };
+  if (extension) entry.format = extension[1].toLowerCase();
+  return entry;
+}
+
+export function addDirectUrlMedia(
+  api: ApiClient,
+  roomId: string,
+  url: string,
+  name?: string,
+  subtitleUrl?: string,
+): Promise<Media> {
+  const directUrl: Record<string, unknown> = { medias: [{ url }], proxyMode: PROXY_MODE_ONLY };
+  if (subtitleUrl) directUrl.subtitles = [subtitleEntry(subtitleUrl)];
   const body: Record<string, unknown> = {
     // Proxy through the server (PLAYBACK_PROXY_MODE_ONLY): many hosts hand out
     // links bound to the IP that requested them or block some networks, so a
     // viewer on another network (e.g. mobile data) gets refused when fetching
     // directly. The server fetches for everyone, as the official client does.
-    sourceConfig: { directUrl: { medias: [{ url }], proxyMode: PROXY_MODE_ONLY } },
+    sourceConfig: { directUrl },
   };
   if (name) body.name = name;
   return api.request('POST', `/api/rooms/${enc(roomId)}/media`, body);
@@ -99,8 +116,43 @@ export function reportMediaDuration(
   return api.request('PUT', `/api/rooms/${enc(roomId)}/media/${enc(mediaId)}/duration`, { durationSeconds });
 }
 
+/** force: the server otherwise refuses the media being played; removing it stops playback. */
 export function deleteMedia(api: ApiClient, roomId: string, mediaId: string): Promise<unknown> {
-  return api.request('DELETE', `/api/rooms/${enc(roomId)}/media/${enc(mediaId)}`);
+  return api.request('DELETE', `/api/rooms/${enc(roomId)}/media/${enc(mediaId)}?force=true`);
+}
+
+export function clearMedia(api: ApiClient, roomId: string): Promise<unknown> {
+  return api.request('DELETE', `/api/rooms/${enc(roomId)}/media`, {});
+}
+
+export function moveMedia(
+  api: ApiClient,
+  roomId: string,
+  mediaId: string,
+  anchor: { beforeMediaId: string } | { afterMediaId: string },
+): Promise<unknown> {
+  return api.request('POST', `/api/rooms/${enc(roomId)}/media/move`, { mediaIds: [mediaId], ...anchor });
+}
+
+export function renameMedia(api: ApiClient, roomId: string, mediaId: string, name: string): Promise<unknown> {
+  return api.request('PATCH', `/api/rooms/${enc(roomId)}/media/${enc(mediaId)}`, { name });
+}
+
+// ---- people ----
+
+export async function listRoomViewers(api: ApiClient, roomId: string): Promise<RoomViewer[]> {
+  const res = await api.request<{ viewers?: RoomViewer[] }>('GET', `/api/rooms/${enc(roomId)}/viewers`);
+  return res.viewers || [];
+}
+
+/** The server requires a kick cooldown and refuses re-admission during it: the shortest allowed, so re-inviting works. */
+export function removeMember(api: ApiClient, roomId: string, userId: string): Promise<unknown> {
+  return api.request('DELETE', `/api/rooms/${enc(roomId)}/members/${enc(userId)}`, { kickCooldownSeconds: 1 });
+}
+
+/** A session outlives the launch that created it: keeps our Telegram name current. */
+export function refreshTelegramProfile(api: ApiClient, initData: string): Promise<unknown> {
+  return api.request('POST', '/api/user/telegram-profile', { initData });
 }
 
 // ---- playback (HTTP) ----

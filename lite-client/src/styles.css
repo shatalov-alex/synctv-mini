@@ -586,3 +586,31 @@ html.player-max body {
   width: auto;
   margin: 0;
 }
+
+.rename {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.rename input {
+  flex: 1;
+  min-width: 0;
+}
+.viewers li {
+  padding: 8px 0;
+}
+.viewer-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.presence {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(127, 127, 127, 0.5);
+}
+.presence.online {
+  background: #2ea043;
+}

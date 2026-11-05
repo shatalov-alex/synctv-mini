@@ -11,6 +11,7 @@ import { PairTvPanel } from '../ui/PairTvPanel';
 import { PlayerPanel } from '../ui/PlayerPanel';
 import { PlaylistPanel } from '../ui/PlaylistPanel';
 import { usePlayer } from '../ui/usePlayer';
+import { ViewersPanel } from '../ui/ViewersPanel';
 import { remoteModeFor, setRemoteModeFor } from '../remoteMode';
 
 export function Room({ roomId, me }: { roomId: string; me: User | null }) {
@@ -96,6 +97,7 @@ export function Room({ roomId, me }: { roomId: string; me: User | null }) {
         autoPlay={snapshot ? snapshot.autoPlay : null}
         canManage={isCreator}
       />
+      <ViewersPanel api={api} roomId={roomId} refreshKey={`${connected}:${memberChanges}:${tvs ? tvs.length : 0}`} canRemove={isCreator} />
       {isCreator && <InvitePanel api={api} roomId={roomId} />}
       <PairTvPanel
         api={api}

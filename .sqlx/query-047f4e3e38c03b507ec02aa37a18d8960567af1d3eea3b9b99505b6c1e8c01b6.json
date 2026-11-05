@@ -1,0 +1,64 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT user_id AS \"user_id: UserId\", first_name, last_name, username\n            FROM auth_telegram_identities\n            WHERE user_id = ANY($1)\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "user_id: UserId",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "auth_telegram_identities",
+            "name": "user_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "first_name",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "auth_telegram_identities",
+            "name": "first_name"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "last_name",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "auth_telegram_identities",
+            "name": "last_name"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "username",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "auth_telegram_identities",
+            "name": "username"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8Array"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "047f4e3e38c03b507ec02aa37a18d8960567af1d3eea3b9b99505b6c1e8c01b6"
+}

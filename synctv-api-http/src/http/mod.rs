@@ -26,6 +26,7 @@ pub(crate) mod room_extra;
 pub(crate) mod room_invites;
 pub(crate) mod service;
 pub(crate) mod ticket;
+pub(crate) mod room_viewers;
 pub(crate) mod tv_pairing;
 pub(crate) mod user;
 pub(crate) mod validation;
@@ -992,6 +993,14 @@ fn register_all_routes() -> Router<AppState> {
                     post(room_invites::revoke_room_invites),
                 )
                 .route("/api/tv/pairings/claim", post(tv_pairing::claim_tv_pairing))
+                .route(
+                    "/api/rooms/{roomId}/viewers",
+                    get(room_viewers::list_room_viewers),
+                )
+                .route(
+                    "/api/user/telegram-profile",
+                    post(room_viewers::refresh_telegram_profile),
+                )
                 .route("/api/rooms/{roomId}/tvs", get(tv_pairing::list_tv_devices))
                 .route(
                     "/api/rooms/{roomId}/tvs/subtitles",

@@ -17,6 +17,7 @@ type HmacSha256 = Hmac<Sha256>;
 pub struct TelegramInitData {
     pub user_id: i64,
     pub first_name: String,
+    pub last_name: Option<String>,
     pub username: Option<String>,
     /// `startapp` payload of a `t.me/<bot>/<app>?startapp=...` link, if any.
     pub start_param: Option<String>,
@@ -28,6 +29,7 @@ struct TelegramUserField {
     id: i64,
     #[serde(default)]
     first_name: String,
+    last_name: Option<String>,
     username: Option<String>,
 }
 
@@ -98,6 +100,7 @@ pub fn verify_init_data(
     Ok(TelegramInitData {
         user_id: user.id,
         first_name: user.first_name,
+        last_name: user.last_name,
         username: user.username,
         start_param: field("start_param").map(str::to_string),
         auth_date,
