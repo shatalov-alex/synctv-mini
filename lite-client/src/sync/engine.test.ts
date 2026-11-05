@@ -478,6 +478,96 @@ describe('RoomSyncEngine on phones (backgrounding)', () => {
   });
 });
 
+describe('RoomSyncEngine auto sync after a pause or seek', () => {
+  const playing = async () => {
+    const ctx = await setup();
+    ctx.ws.push(playbackEvent(playback));
+    ctx.ws.push(stateEvent(state()));
+    await flush();
+    vi.setSystemTime(T0 + 800);
+    ctx.player.emit('playing');
+    ctx.player.currentTime = 51.8;
+    await vi.advanceTimersByTimeAsync(1000); // the join's own settle
+    ctx.player.calls.length = 0;
+    return ctx;
+  };
+
+  it('fixes a late landing after its own seek, once', async () => {
+    const { engine, player } = await playing();
+    engine.seek(100);
+    expect(player.calls).toEqual(['seek:100']);
+    player.calls.length = 0;
+    player.currentTime = 100.2; // buffering ate 0.8 s of the 1 s that follow
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(player.calls).toEqual(['seek:101']);
+    player.calls.length = 0;
+    player.currentTime = 101.3; // still 0.7 s off later: within the loop's tolerance
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(player.calls).toEqual([]);
+  });
+
+  it('fixes a late landing after a seek by someone else', async () => {
+    const { ws, player } = await playing();
+    const now = Date.now();
+    ws.push(stateEvent(state({ position: 100, version: '2', generatedAtMillis: String(now) })));
+    await flush();
+    expect(player.calls).toEqual(['seek:100']);
+    player.calls.length = 0;
+    player.currentTime = 100.4; // 0.6 s behind the room a second later
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(player.calls).toEqual(['seek:101']);
+  });
+
+  it('waits for a landing that is still loading', async () => {
+    const { engine, player } = await playing();
+    engine.seek(100);
+    player.calls.length = 0;
+    player.buffering = true;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(player.calls).toEqual([]);
+    player.buffering = false;
+    player.currentTime = 101.5; // room at 102 at the next try
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(player.calls).toEqual(['seek:102']);
+  });
+
+  it('does not chase a part that has not loaded, and gives up', async () => {
+    const { engine, player } = await playing();
+    engine.seek(100);
+    player.calls.length = 0;
+    player.bufferedAhead = 0;
+    for (let i = 1; i <= 6; i++) {
+      player.currentTime = 100 + i - 0.5; // half a second behind the room
+      await vi.advanceTimersByTimeAsync(1000);
+    }
+    expect(player.calls).toEqual([]);
+    player.bufferedAhead = 30; // loaded too late: this change is over
+    player.currentTime = 106.5;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(player.calls).toEqual([]);
+  });
+
+  it('lines up with the room after its own pause', async () => {
+    const { engine, player } = await playing();
+    engine.pause();
+    player.calls.length = 0;
+    player.currentTime += 0.5; // the frame it stopped on is off the position it told the room
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(player.calls.length).toBe(1);
+    expect(player.calls[0]).toMatch(/^seek:/);
+  });
+
+  it('leaves a normal room update alone', async () => {
+    const { ws, player } = await playing();
+    const now = Date.now();
+    ws.push(stateEvent(state({ position: 51.8, version: '2', generatedAtMillis: String(now) })));
+    await flush();
+    player.currentTime = 52.3; // 0.5 s off the room a second later: a forced sync would seek
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(player.calls).toEqual([]);
+  });
+});
+
 describe('RoomSyncEngine post-start settle', () => {
   it('re-syncs once after a forced seek+play starts late, then stops', async () => {
     const { ws, player } = await setup();
