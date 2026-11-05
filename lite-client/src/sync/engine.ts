@@ -56,6 +56,9 @@ const INIT_TIMEOUT_MS = 20_000;
 export const BACKGROUND_RECONNECT_MS = 15_000;
 /** Past the sync cooldown, so the first frames have played before measuring drift. */
 const SETTLE_DELAY_MS = SYNC_COOLDOWN_MS + 200;
+/** The room's position differs from where it should have got to by this much: someone moved it. */
+const ROOM_JUMP_S = 0.5;
+const AUTO_SYNC_TRIES = 4;
 const MAX_ERROR_RELOADS = 3;
 const PULL_BACK_WAIT_MS = 4000;
 /** Reloads this far apart are separate incidents (e.g. each 30 min URL expiry of a long film). */
@@ -158,6 +161,7 @@ export class RoomSyncEngine implements SyncEngine {
   /** A forced seek+play is waiting for playback to actually start (see settle()). */
   private settlePending = false;
   private settleTimer: ReturnType<typeof setTimeout> | null = null;
+  private autoSyncTimer: ReturnType<typeof setTimeout> | null = null;
   /** Bumped per openSocket so an older, slower ticket request can't open a second socket. */
   private connectGen = 0;
   private lifecycleBound = false;
@@ -292,6 +296,7 @@ export class RoomSyncEngine implements SyncEngine {
   dispose(): void {
     this.disposed = true;
     this.bindLifecycle(false);
+    if (this.autoSyncTimer !== null) clearTimeout(this.autoSyncTimer);
     if (this.settleTimer !== null) clearTimeout(this.settleTimer);
     if (this.stallTimer !== null) clearTimeout(this.stallTimer);
     this.clock.stop();
@@ -315,6 +320,7 @@ export class RoomSyncEngine implements SyncEngine {
     // jumps anyway, and a sub-1.2 s offset left there would otherwise carry
     // into the whole film.
     const precise = !s.playing || (!!prev && (!prev.playing || prev.speed !== s.speed));
+    const moved = !!prev && sameSource(prev, s) && ((prev.playing && !s.playing) || this.roomJumped(prev, s));
     this.cur = s;
     if (!hasSource(s)) {
       this.unload();
@@ -334,6 +340,7 @@ export class RoomSyncEngine implements SyncEngine {
       await this.load(res.source);
       return;
     }
+    if (moved) this.scheduleAutoSync();
     await this.performSync(s, !!opts.forceSeek || sourceChanged || precise);
   }
 
@@ -487,6 +494,37 @@ export class RoomSyncEngine implements SyncEngine {
         this.settlePending = false; // this pass's own seek+play doesn't settle again
       });
     }, SETTLE_DELAY_MS);
+  }
+
+  private roomJumped(prev: SyncState, s: SyncState): boolean {
+    const expected = expectedPosition(prev, s.generatedAtMs, this.player.duration).position;
+    return Math.abs(expected - s.position) > ROOM_JUMP_S;
+  }
+
+  /**
+   * The room was paused or moved: press "Sync" once the jump has landed. During playback only
+   * when the room's position is already loaded: seeking to a part that isn't lands late, and
+   * further off than it started. A few tries per change, so a slow device doesn't loop.
+   */
+  private scheduleAutoSync(attempt = 0): void {
+    if (this.autoSyncTimer !== null) clearTimeout(this.autoSyncTimer);
+    this.autoSyncTimer = setTimeout(() => {
+      this.autoSyncTimer = null;
+      const cur = this.cur;
+      if (this.disposed || !cur || this.snap.remote || this.snap.live || this.freeMode) return;
+      if (cur.playing && !this.canSeekPrecisely(cur)) {
+        if (attempt + 1 < AUTO_SYNC_TRIES) this.scheduleAutoSync(attempt + 1);
+        return;
+      }
+      void this.performSync(cur, true);
+    }, SETTLE_DELAY_MS);
+  }
+
+  private canSeekPrecisely(s: SyncState): boolean {
+    if (this.player.buffering || this.player.seeking) return false;
+    const target = expectedPosition(s, this.clock.now(), this.player.duration).position;
+    const ahead = target - this.player.currentTime;
+    return ahead <= 0 || ahead < this.player.bufferedAhead;
   }
 
   private retryLoop(): void {
@@ -705,6 +743,7 @@ export class RoomSyncEngine implements SyncEngine {
       if (r.state) void this.apply(r.state, { forceSeek: true });
     }
     this.reportStatus(false);
+    if (kind === 'pause' || kind === 'seek') this.scheduleAutoSync();
   }
 
   private async navigate(call: (api: ApiClient, roomId: string, playing: boolean) => Promise<unknown>): Promise<void> {
