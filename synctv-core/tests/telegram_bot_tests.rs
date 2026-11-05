@@ -342,6 +342,7 @@ async fn bot_serves_start_and_invite_and_notifies_the_admin() {
         .find_or_create_telegram_user(&TelegramInitData {
             user_id: GUEST_TG_ID,
             first_name: "Olena".to_string(),
+            last_name: None,
             username: None,
             start_param: None,
             auth_date: 0,

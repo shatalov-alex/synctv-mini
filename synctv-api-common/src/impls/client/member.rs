@@ -47,6 +47,18 @@ pub fn compute_room_members_response_version(
     hex_encode(hasher.finalize())
 }
 
+fn telegram_display_name(profile: &synctv_core::repository::TelegramProfile) -> String {
+    let name = match profile.last_name.as_deref() {
+        Some(last) if !last.is_empty() => format!("{} {last}", profile.first_name),
+        _ => profile.first_name.clone(),
+    };
+    if name.is_empty() {
+        profile.username.clone().unwrap_or_default()
+    } else {
+        name
+    }
+}
+
 fn review_status_i32_to_core(value: i32) -> Result<ReviewStatus, ApiError> {
     ReviewStatus::try_from(value)
         .map_err(|_| ApiError::InvalidInput("Unsupported review status".to_string()))
@@ -330,6 +342,88 @@ impl ClientApiImpl {
         };
         response.version = compute_room_members_response_version(&response);
         Ok(response)
+    }
+
+    /// Everyone in the room with the names people know them by, and which of them are TVs.
+    pub async fn list_room_viewers(
+        &self,
+        user_id: &UserId,
+        room_id: &str,
+    ) -> Result<synctv_proto::client::ListRoomViewersResponse, ApiError> {
+        let members = self
+            .get_room_members(
+                user_id,
+                room_id,
+                synctv_proto::client::GetRoomMembersRequest {
+                    page_size: 100,
+                    ..Default::default()
+                },
+            )
+            .await?
+            .members;
+        let rid = self.parse_room_id(room_id)?;
+        let room = self
+            .room_service
+            .get_room(&rid)
+            .await
+            .map_err(ApiError::from)?;
+        let tvs = self
+            .room_service
+            .list_tv_devices(rid, *user_id)
+            .await
+            .map_err(Self::map_room_access_error)?;
+
+        let mut people = Vec::with_capacity(members.len());
+        for member in &members {
+            people.push(
+                self.public_id_codec
+                    .decode_user_id(&member.user_id)
+                    .map_err(|error| {
+                        ApiError::Internal(format!("Failed to decode user public id: {error}"))
+                    })?,
+            );
+        }
+        // Whoever paired a TV may have left the room since.
+        let lookups: Vec<UserId> = people
+            .iter()
+            .copied()
+            .chain(tvs.iter().filter_map(|tv| tv.paired_by))
+            .collect();
+        let profiles: std::collections::HashMap<_, _> = self
+            .user_service
+            .telegram_profiles(&lookups)
+            .await
+            .map_err(ApiError::from)?
+            .into_iter()
+            .map(|profile| (profile.user_id, profile))
+            .collect();
+
+        let mut viewers = Vec::with_capacity(members.len());
+        for (member, id) in members.into_iter().zip(people) {
+            let tv = tvs.iter().find(|tv| tv.user_id == id);
+            let paired_by_name = tv
+                .and_then(|tv| tv.paired_by)
+                .and_then(|by| profiles.get(&by))
+                .map(telegram_display_name)
+                .unwrap_or_default();
+            let profile = profiles.get(&id);
+            viewers.push(synctv_proto::client::RoomViewer {
+                user_id: member.user_id,
+                first_name: profile.map(|p| p.first_name.clone()).unwrap_or_default(),
+                last_name: profile
+                    .and_then(|p| p.last_name.clone())
+                    .unwrap_or_default(),
+                telegram_username: profile
+                    .and_then(|p| p.username.clone())
+                    .unwrap_or_default(),
+                username: member.username,
+                is_online: member.is_online || member.connection_count > 0,
+                is_creator: room.created_by == id,
+                is_tv: tv.is_some(),
+                paired_by_name,
+            });
+        }
+        Ok(synctv_proto::client::ListRoomViewersResponse { viewers })
     }
 
     pub async fn add_member(

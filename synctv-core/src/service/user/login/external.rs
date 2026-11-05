@@ -4,7 +4,7 @@ use synctv_common::ExecutionControl;
 
 use crate::{
     models::{SignupMethod, User, UserId},
-    repository::TelegramIdentityRepository,
+    repository::{TelegramIdentityRepository, TelegramProfile},
     service::{
         auth::{verify_telegram_init_data, TelegramInitData},
         user::{
@@ -90,6 +90,7 @@ impl UserService {
                 verified.user_id,
                 &user.id,
                 &verified.first_name,
+                verified.last_name.as_deref(),
                 verified.username.as_deref(),
             )
             .await?;
@@ -222,6 +223,7 @@ impl UserService {
                     verified.user_id,
                     &user.id,
                     &verified.first_name,
+                    verified.last_name.as_deref(),
                     verified.username.as_deref(),
                 )
                 .await?;
@@ -240,10 +242,42 @@ impl UserService {
                 verified.user_id,
                 &user.id,
                 &verified.first_name,
+                verified.last_name.as_deref(),
                 verified.username.as_deref(),
             )
             .await?;
         Ok(user)
+    }
+
+    /// Refresh the stored Telegram name of `user_id` from a launch of that same account: a
+    /// session outlives the launch that created it, and people change their names.
+    /// Returns whether the launch was that account's.
+    pub async fn refresh_telegram_profile(
+        &self,
+        user_id: &UserId,
+        verified: &TelegramInitData,
+    ) -> Result<bool> {
+        let identities = TelegramIdentityRepository::new(self.repository.pool().clone());
+        if identities.find_user_id(verified.user_id).await?.as_ref() != Some(user_id) {
+            return Ok(false);
+        }
+        identities
+            .upsert(
+                verified.user_id,
+                user_id,
+                &verified.first_name,
+                verified.last_name.as_deref(),
+                verified.username.as_deref(),
+            )
+            .await?;
+        Ok(true)
+    }
+
+    /// The Telegram names of those of `user_ids` that have one.
+    pub async fn telegram_profiles(&self, user_ids: &[UserId]) -> Result<Vec<TelegramProfile>> {
+        TelegramIdentityRepository::new(self.repository.pool().clone())
+            .profiles_for_users(user_ids)
+            .await
     }
 
     /// Issue tokens for a user whose Telegram account the caller has already verified and

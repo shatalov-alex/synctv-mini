@@ -1,6 +1,6 @@
 // Session bootstrap for the Mini App / phone surfaces.
 import { ApiClient, ApiError } from './api/http';
-import { getMe, loginWithTelegram, redeemInvite, tokensFromLogin } from './api/endpoints';
+import { getMe, loginWithTelegram, redeemInvite, refreshTelegramProfile, tokensFromLogin } from './api/endpoints';
 import { defaultStorage, TokenStore } from './api/session';
 import type { User } from './api/types';
 import { parseStartParam, type StartIntent } from './links';
@@ -67,6 +67,8 @@ export async function bootstrap(tg: TgWebApp | null): Promise<BootResult> {
     try {
       const me = await getMe(api);
       api.schedule();
+      // Only the names others see depend on it.
+      if (tg) refreshTelegramProfile(api, tg.initData).catch(() => {});
       return { me, intent, error: inviteError };
     } catch (error) {
       if (!(error instanceof ApiError) || error.status !== 401) {

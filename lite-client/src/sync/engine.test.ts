@@ -367,7 +367,7 @@ describe('RoomSyncEngine', () => {
     ws.push({ resourceEvent: { observeId: 'room_online', onlineEvent: { kind: 1, userId: 'usr_tv' } } });
     expect(engine.snapshot().memberChanges).toBe(3);
     ws.push({ resourceEvent: { observeId: 'room_online', onlineEvent: { kind: 2, userId: 'usr_tv' } } });
-    expect(engine.snapshot().memberChanges).toBe(3);
+    expect(engine.snapshot().memberChanges).toBe(4);
   });
 
   it('a refused playlist observation leaves the playlist unknown', async () => {

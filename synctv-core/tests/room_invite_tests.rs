@@ -14,6 +14,7 @@ fn telegram_user(id: i64, first_name: &str) -> TelegramInitData {
     TelegramInitData {
         user_id: id,
         first_name: first_name.to_string(),
+        last_name: None,
         username: None,
         start_param: None,
         auth_date: 0,
@@ -91,6 +92,7 @@ async fn single_use_invite_admits_one_guest_with_playback_control_only() {
         assert!(effective.has(allowed), "guest should have {allowed:?}");
     }
     for denied in [
+        RoomPermission::MANAGE_OWN_MEDIA,
         RoomPermission::ADD_MEMBERS,
         RoomPermission::REMOVE_MEMBERS,
         RoomPermission::MANAGE_MEMBER_PERMISSIONS,
@@ -169,6 +171,38 @@ async fn only_the_creator_manages_invites_and_revoked_links_admit_nobody() {
         .admit_invited_member(&revoked, stranger.id, "Mallory".to_string())
         .await
         .is_err());
+}
+
+#[tokio::test]
+#[ignore = "Requires Docker-backed PostgreSQL"]
+async fn telegram_names_refresh_only_from_the_same_account() {
+    let (_container, users, _rooms, _creator, _room) = Box::pin(setup()).await;
+    let olena = users
+        .find_or_create_telegram_user(&telegram_user(7, "Olena"))
+        .await
+        .checked("olena");
+    let mut renamed = telegram_user(7, "Olena");
+    renamed.last_name = Some("Koval".to_string());
+    renamed.username = Some("okoval".to_string());
+    assert!(users
+        .refresh_telegram_profile(&olena.id, &renamed)
+        .await
+        .checked("own launch"));
+    let mut stranger = telegram_user(8, "Mallory");
+    stranger.username = Some("mallory".to_string());
+    assert!(!users
+        .refresh_telegram_profile(&olena.id, &stranger)
+        .await
+        .checked("someone else's launch"));
+
+    let profiles = users
+        .telegram_profiles(&[olena.id])
+        .await
+        .checked("profiles");
+    assert_eq!(profiles.len(), 1);
+    assert_eq!(profiles[0].first_name, "Olena");
+    assert_eq!(profiles[0].last_name.as_deref(), Some("Koval"));
+    assert_eq!(profiles[0].username.as_deref(), Some("okoval"));
 }
 
 #[tokio::test]

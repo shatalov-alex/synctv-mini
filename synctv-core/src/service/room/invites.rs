@@ -13,9 +13,9 @@ use crate::{
 use super::{admission_notice::AdmissionNotice, AddMemberWithOutboxRequest, RoomService};
 
 /// What an invited guest may do: watch, chat, and fully control playback (play/pause, seek,
-/// speed, next/previous). Everything else a room admin could do is removed.
+/// speed, next/previous). Everything else a room admin could do is removed, including adding
+/// videos.
 pub const INVITED_GUEST_PERMISSIONS: u64 = RoomAdminPermissionBits::SEND_CHAT_MESSAGES
-    | RoomAdminPermissionBits::MANAGE_OWN_MEDIA
     | RoomAdminPermissionBits::BROWSE_LIBRARY
     | RoomAdminPermissionBits::VIEW_MEMBERS
     | RoomAdminPermissionBits::VIEW_CHAT_HISTORY

@@ -107,7 +107,6 @@ export function playbackUpdateMessage(cmd: UpdateCommand): unknown {
   return { playbackStateUpdate: msg };
 }
 
-const ONLINE_EVENT_JOINED = 1;
 
 export interface TvSubtitles {
   enabled: boolean;
@@ -160,8 +159,8 @@ export function parseIncoming(text: string): Incoming {
       return { kind: 'settings', autoPlay: !!settings?.autoPlay?.enabled, tvSubtitles: parseTvSubtitles(settings?.tvSubtitles) };
     }
     if (ev.observeId === 'room_members' && ev.roomMemberEvent) return { kind: 'members' };
-    // A newly paired TV joins silently: the first sign of it is coming online. ONLINE_EVENT_KIND_JOINED = 1.
-    if (ev.observeId === 'room_online' && ev.onlineEvent && ev.onlineEvent.kind === ONLINE_EVENT_JOINED) return { kind: 'members' };
+    // Coming and going changes who is watching. A newly paired TV joins silently: coming online is its first sign.
+    if (ev.observeId === 'room_online' && ev.onlineEvent) return { kind: 'members' };
     return { kind: 'other' };
   }
   if (msg.error && typeof msg.error === 'object') {

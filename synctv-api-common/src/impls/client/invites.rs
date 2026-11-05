@@ -86,6 +86,40 @@ impl ClientApiImpl {
         Ok(proto::RevokeRoomInvitesResponse { revoked })
     }
 
+    /// Keep the caller's Telegram name current from their launch of the Mini App. A launch of
+    /// any other Telegram account changes nothing.
+    pub async fn refresh_telegram_profile_with_control(
+        &self,
+        user_id: &UserId,
+        req: proto::RefreshTelegramProfileRequest,
+        client_ip: Option<std::net::IpAddr>,
+        control: Option<&ExecutionControl>,
+    ) -> Result<proto::RefreshTelegramProfileResponse, ApiError> {
+        crate::impls::validate_proto_request(&req)?;
+        let telegram = &self.runtime_settings.telegram;
+        if telegram.bot_token.is_empty() {
+            return Err(ApiError::NotFound(
+                "Telegram login is not enabled".to_string(),
+            ));
+        }
+        let verified = self
+            .user_service
+            .verify_telegram_launch_with_control(
+                &req.init_data,
+                &telegram.bot_token,
+                telegram.init_data_max_age_secs,
+                client_ip,
+                control,
+            )
+            .await
+            .map_err(ApiError::from)?;
+        self.user_service
+            .refresh_telegram_profile(user_id, &verified)
+            .await
+            .map_err(ApiError::from)?;
+        Ok(proto::RefreshTelegramProfileResponse {})
+    }
+
     /// Redeem an invite from the Telegram Mini App: verify the launch, join the room with
     /// playback control (or just sign in if already a member), and issue tokens.
     pub async fn redeem_room_invite_with_control(
