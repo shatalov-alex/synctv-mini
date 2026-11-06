@@ -1,0 +1,98 @@
+# SyncTV on a VPS. Nothing publishes a port: all traffic arrives through the Cloudflare tunnel,
+# which is why the tunnel is in a profile and only starts at cutover (see README.md).
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: synctv-postgres
+    env_file: env/postgres.env
+    command:
+      - postgres
+      - -cshared_buffers=32MB
+      - -ceffective_cache_size=128MB
+      - -cmax_connections=20
+      - -cwork_mem=2MB
+      - -cmaintenance_work_mem=16MB
+      - -cmax_wal_size=256MB
+      - -cautovacuum_max_workers=1
+      - -cmax_worker_processes=2
+      - -cmax_parallel_workers=0
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U synctv"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging: *logging
+    networks: [synctv]
+    restart: unless-stopped
+
+  redis:
+    image: redis:8-alpine
+    container_name: synctv-redis
+    env_file: env/redis.env
+    volumes:
+      - redis_data:/data
+    command: sh -ec 'exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"'
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    logging: *logging
+    networks: [synctv]
+    restart: unless-stopped
+
+  synctv:
+    image: synctv-lite:vps
+    container_name: synctv-app
+    env_file: env/synctv.env
+    environment:
+      SYNCTV_DATA_DIR: /data
+      SYNCTV_SERVER_WEB_UI_DIRECTORY: /srv/lite-client
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - synctv_data:/data
+      - ./lite-client:/srv/lite-client:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health/ready"]
+      interval: 30s
+      timeout: 3s
+      start_period: 40s
+      retries: 3
+    logging: *logging
+    networks: [synctv]
+    restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared:2026.10.0
+    container_name: synctv-tunnel
+    profiles: [tunnel]
+    command: tunnel --no-autoupdate --config /etc/cloudflared/config.yml run
+    volumes:
+      - ./cloudflared:/etc/cloudflared:ro
+    depends_on:
+      synctv:
+        condition: service_healthy
+    logging: *logging
+    networks: [synctv]
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  synctv_data:
+
+networks:
+  synctv:

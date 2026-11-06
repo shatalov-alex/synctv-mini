@@ -27,3 +27,6 @@ synctv-web-ui/dist/*
 !synctv-web-ui/dist/.gitkeep
 
 AGENTS.md
+
+# VPS bundle: contains live secrets
+deploy/vps/out/
