@@ -25,3 +25,9 @@ synctv.yaml
 # Lite client: built separately and mounted or copied into the web UI directory
 lite-client/node_modules/
 lite-client/dist/
+
+# Local-only files that must never reach a build context
+backups/
+classic/
+deploy/
+*.tar
