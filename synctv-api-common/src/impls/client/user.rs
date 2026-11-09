@@ -351,7 +351,13 @@ impl ClientApiImpl {
     pub async fn close_account(
         &self,
         user_id: &UserId,
+        req: synctv_proto::client::CloseAccountRequest,
     ) -> Result<synctv_proto::client::CloseAccountResponse, ApiError> {
+        crate::impls::validate_proto_request(&req)?;
+        self.user_service
+            .consume_sensitive_operation_verification(user_id, &req.verification_id)
+            .await
+            .map_err(ApiError::from)?;
         let uid = *user_id;
         let owned_room_ids = list_owned_room_ids(self, &uid).await?;
         let (deleted_room_outbox_events, deleted_room_fanout) =

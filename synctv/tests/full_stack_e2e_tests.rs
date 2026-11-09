@@ -1290,6 +1290,18 @@ fn synctv_binary_path() -> std::path::PathBuf {
     );
 }
 
+/// Creates a test HTTPS client that trusts the given PEM certificate
+/// (self-signed test roots).
+fn test_https_client_with_root(cert_path: &str) -> reqwest::Client {
+    let pem = std::fs::read(cert_path).expect("certificate pem");
+    let certificate = reqwest::Certificate::from_pem(&pem).expect("parse certificate");
+    reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .add_root_certificate(certificate)
+        .build()
+        .expect("HTTPS client should build")
+}
+
 /// Creates a test HTTP client with reasonable timeouts for E2E tests.
 fn test_http_client() -> reqwest::Client {
     reqwest::Client::builder()
@@ -3912,6 +3924,136 @@ async fn full_stack_cli_user_lifecycle_commands_cover_identity_state_role_and_ba
     assert_eq!(
         still_banned.status,
         synctv_proto::common::UserStatus::Banned as i32
+    );
+}
+
+#[tokio::test]
+#[ignore = "Requires Docker (testcontainers)"]
+async fn full_stack_account_closure_requires_sensitive_verification() {
+    use synctv_proto::client::{
+        CloseAccountRequest, FinishSensitiveOperationVerificationRequest,
+        StartSensitiveOperationVerificationRequest,
+    };
+
+    let server = start_test_server().await;
+    let suffix = unique_test_suffix();
+    let username = format!("closure_user_{suffix}");
+    let email = format!("closure-{suffix}@example.com");
+    let password = "StrongPass1".to_string();
+
+    let register = opaque_http_register(&server, &username, &email, &password).await;
+    assert_eq!(register.status(), StatusCode::OK);
+    let token = login_http_ok_token(&server, &username, &password).await;
+    let client = test_http_client();
+
+    let me_url = format!("{}/api/user", server.api_base_url);
+    let me = client
+        .get(&me_url)
+        .bearer_auth(&token)
+        .send()
+        .await
+        .expect("get_me should complete before closure");
+    assert_eq!(me.status(), StatusCode::OK);
+
+    // Closure without a valid verification must be rejected and leave the
+    // account intact. A missing verification_id fails proto validation
+    // (400); a well-formed but unknown one fails the consume (401).
+    let missing = post_json(
+        &client,
+        &format!("{}/api/user/account-closure", server.api_base_url),
+        CloseAccountRequest {
+            verification_id: String::new(),
+        },
+        Some(&token),
+    )
+    .await;
+    assert_eq!(missing.status(), StatusCode::BAD_REQUEST);
+    let rejected = post_json(
+        &client,
+        &format!("{}/api/user/account-closure", server.api_base_url),
+        CloseAccountRequest {
+            verification_id: "bogus-verification-id".to_string(),
+        },
+        Some(&token),
+    )
+    .await;
+    assert_eq!(rejected.status(), StatusCode::UNAUTHORIZED);
+    let me_after_rejection = client
+        .get(&me_url)
+        .bearer_auth(&token)
+        .send()
+        .await
+        .expect("get_me should complete after rejected closure");
+    assert_eq!(me_after_rejection.status(), StatusCode::OK);
+
+    // Complete password verification, then close the account.
+    let start = post_json(
+        &client,
+        &format!(
+            "{}/api/user/sensitive-verification/start",
+            server.api_base_url
+        ),
+        StartSensitiveOperationVerificationRequest {},
+        Some(&token),
+    )
+    .await;
+    assert_eq!(start.status(), StatusCode::OK);
+    let outcome = response_json(start).await;
+    let challenge = outcome["challenge"]
+        .as_object()
+        .expect("single-factor verification start should return a challenge");
+    let session_id = challenge["sessionId"]
+        .as_str()
+        .expect("challenge should carry sessionId")
+        .to_string();
+
+    let finish = post_json(
+        &client,
+        &format!(
+            "{}/api/user/sensitive-verification/finish",
+            server.api_base_url
+        ),
+        FinishSensitiveOperationVerificationRequest {
+            session_id,
+            method: synctv_proto::client::SensitiveOperationVerificationMethod::Password as i32,
+            password: password.clone(),
+            email_token: String::new(),
+            passkey_session_id: String::new(),
+            passkey_credential: None,
+            totp_code: String::new(),
+            recovery_code: String::new(),
+        },
+        Some(&token),
+    )
+    .await;
+    assert_eq!(finish.status(), StatusCode::OK);
+    let finished = response_json(finish).await;
+    let verification_id = finished["verificationId"]
+        .as_str()
+        .expect("password verification should complete with a verification id")
+        .to_string();
+
+    let closed = post_json(
+        &client,
+        &format!("{}/api/user/account-closure", server.api_base_url),
+        CloseAccountRequest { verification_id },
+        Some(&token),
+    )
+    .await;
+    assert_eq!(closed.status(), StatusCode::OK);
+    let closed_body = response_json(closed).await;
+    assert_eq!(closed_body["success"], true);
+
+    let me_after_closure = client
+        .get(&me_url)
+        .bearer_auth(&token)
+        .send()
+        .await
+        .expect("get_me should complete after closure");
+    assert_eq!(
+        me_after_closure.status(),
+        StatusCode::UNAUTHORIZED,
+        "deleted user's token must stop working"
     );
 }
 
@@ -9668,9 +9810,12 @@ fn free_udp_port() -> u16 {
 /// Writes an ephemeral self-signed ECDSA certificate + key as PEM files.
 fn write_self_signed_pem(dir: &std::path::Path) -> (String, String) {
     let mut params =
-        rcgen::CertificateParams::new(vec!["localhost".to_string()]).expect("certificate params");
+        rcgen::CertificateParams::new(vec!["localhost".to_string(), "127.0.0.1".to_string()])
+            .expect("certificate params");
     params.not_before = time::OffsetDateTime::now_utc() - time::Duration::days(1);
     params.not_after = time::OffsetDateTime::now_utc() + time::Duration::days(13);
+    // HTTPS clients verify server-auth EKU; WebTransport pinning is by hash.
+    params.extended_key_usages = vec![rcgen::ExtendedKeyUsagePurpose::ServerAuth];
     let key_pair = rcgen::KeyPair::generate().expect("key pair");
     let cert = params.self_signed(&key_pair).expect("self-signed cert");
     let cert_path = dir.join("quic-cert.pem");
@@ -9716,11 +9861,15 @@ async fn full_stack_quic_serves_http3_and_webtransport_realtime() {
     let (cert_path, key_path) = write_self_signed_pem(&temp_dir);
     let udp_port = free_udp_port();
 
+    // nginx-style shared port: HTTPS on TCP and h3 on UDP use one number.
+    let tls_port = udp_port;
     let server = start_test_server_with(|config| {
+        config.server.tls.enabled = true;
+        config.server.tls.port = tls_port;
+        config.server.tls.cert_path = cert_path.clone();
+        config.server.tls.key_path = key_path.clone();
         config.server.quic.enabled = true;
         config.server.quic.port = Some(udp_port);
-        config.server.quic.cert_path = cert_path.clone();
-        config.server.quic.key_path = key_path.clone();
     })
     .await;
     let client = test_http_client();
@@ -9743,6 +9892,15 @@ async fn full_stack_quic_serves_http3_and_webtransport_realtime() {
         alt_svc.contains(&format!("h3=\":{udp_port}\"")),
         "unexpected Alt-Svc: {alt_svc}"
     );
+
+    // The HTTPS listener serves the same API on TCP with the shared
+    // certificate on the same port number as the h3 UDP listener.
+    {
+        let tls_client = test_https_client_with_root(&cert_path);
+        let https_url = format!("https://127.0.0.1:{tls_port}/api/public/time");
+        let https_response = tls_client.get(&https_url).send().await.expect("https");
+        assert_eq!(https_response.status(), StatusCode::OK);
+    }
 
     // The same API is served natively over HTTP/3, and advertises WebTransport.
     let (status, _headers, body) =
