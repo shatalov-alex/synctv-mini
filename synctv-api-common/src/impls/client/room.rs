@@ -262,7 +262,10 @@ impl ClientApiImpl {
         try_playback_state_to_proto(&state, &self.public_id_codec)
     }
 
-    pub(super) async fn user_username_for_event(&self, user_id: &UserId) -> Result<String, ApiError> {
+    pub(super) async fn user_username_for_event(
+        &self,
+        user_id: &UserId,
+    ) -> Result<String, ApiError> {
         self.user_service
             .get_user(user_id)
             .await
@@ -1756,6 +1759,9 @@ impl ClientApiImpl {
 
         prepared_membership_fanout.publish_after_outbox_commit();
         prepared_cleanup_fanout.publish_after_outbox_commit();
+
+        // A TV must not outlast the person who let it in.
+        self.remove_tvs_paired_by(room_id, uid).await?;
 
         Ok(synctv_proto::client::LeaveRoomResponse { success: true })
     }

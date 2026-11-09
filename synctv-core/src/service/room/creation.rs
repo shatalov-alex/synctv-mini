@@ -167,7 +167,7 @@ impl RoomService {
             );
 
             let mut tx = self.pool.begin().await?;
-            self.ensure_user_can_create_room_now_tx(&mut tx, &created_by)
+            self.ensure_user_can_create_room_now_tx(&mut tx, &created_by, true)
                 .await?;
             self.enforce_room_ownership_limit_tx(&mut tx, &created_by, None)
                 .await?;
@@ -242,7 +242,7 @@ impl RoomService {
 
         let mut tx = self.pool.begin().await?;
 
-        self.ensure_user_can_create_room_now_tx(&mut tx, &created_by)
+        self.ensure_user_can_create_room_now_tx(&mut tx, &created_by, enforce_creation_policy)
             .await?;
         self.enforce_room_ownership_limit_tx(&mut tx, &created_by, None)
             .await?;

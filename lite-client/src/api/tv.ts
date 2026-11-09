@@ -109,6 +109,8 @@ export function claimErrorMessage(error: unknown): string {
       case 404:
         return 'That code is wrong or has expired. Check the code on the TV.';
       case 403:
+        // The server explains the TV-specific refusals (a TV pairing, a room full of TVs).
+        if (/\bTVs?\b/.test(error.message)) return error.message;
         return 'You don’t have playback control in this room, so you can’t pair a TV to it.';
       case 401:
         return 'Too many wrong codes. Wait a few minutes, then try again.';

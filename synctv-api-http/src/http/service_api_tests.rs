@@ -241,7 +241,13 @@ async fn service_key_rejects_wrong_key_tunnel_and_external_peers() -> TestResult
     let (status, body) = send(app, wrong).await?;
     assert_eq!(status, StatusCode::UNAUTHORIZED, "wrong key: {body}");
 
-    for header in ["Cf-Ray", "Cf-Connecting-Ip"] {
+    for header in [
+        "Cf-Ray",
+        "Cf-Connecting-Ip",
+        "X-Forwarded-For",
+        "X-Real-IP",
+        "Forwarded",
+    ] {
         let mut tunnel = Call::keyed("GET", "/api/user");
         tunnel.extra_header = Some((header, "1.2.3.4"));
         let (status, body) = send(app, tunnel).await?;

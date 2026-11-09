@@ -184,7 +184,8 @@ security:
   login_discovery_key: ""
   webauthn_enumeration_key: ""
   # Global SSRF policy for server-side outbound requests.
-  # Disabled by default for self-hosted private media providers. Enable it for public deployments.
+  # Keep it on: with proxied direct URLs anyone who may add media could otherwise make the
+  # server fetch private, loopback and cloud metadata addresses.
   # Prefer allowed_hosts / allowed_ip_ranges for known internal media endpoints.
   # Set allow_private_network_targets=true only in a trusted private deployment.
   # Environment variables:
@@ -193,7 +194,7 @@ security:
   #   SYNCTV_SECURITY_SSRF_ALLOWED_HOSTS
   #   SYNCTV_SECURITY_SSRF_ALLOWED_IP_RANGES
   ssrf:
-    enabled: false
+    enabled: true
     allow_private_network_targets: false
     allowed_hosts: []
     allowed_ip_ranges: []
@@ -715,6 +716,12 @@ media:
   # proxies (prefer/only). auto = upstream behaviour. Explicit client modes are kept.
   # Environment variable: SYNCTV_MEDIA_DIRECT_URL_DEFAULT_PROXY_MODE
   direct_url_default_proxy_mode: "auto"
+
+rooms:
+  # Let plain user accounts (invited guests, paired TVs, sign-ups) create rooms. Off: only
+  # admins can, so guests stay inside the rooms they were let into.
+  # Environment variable: SYNCTV_ROOMS_USERS_CAN_CREATE
+  users_can_create: false
 
   # ============================================================================
   # Cluster Configuration

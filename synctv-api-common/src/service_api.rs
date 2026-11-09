@@ -13,9 +13,19 @@ use subtle::ConstantTimeEq;
 
 pub const SERVICE_API_KEY_PREFIX: &str = "stk_";
 pub const SERVICE_API_KEY_MIN_LEN: usize = 36;
+/// Fewest different characters after the prefix. A random hex key has about 16; a typed
+/// placeholder such as `stk_aaaa...` or `stk_1234...1234` has few.
+pub const SERVICE_API_KEY_MIN_DISTINCT_CHARS: usize = 12;
 
-/// Headers the Cloudflare tunnel adds to every request it forwards.
-pub const CLOUDFLARE_TUNNEL_HEADERS: [&str; 2] = ["cf-ray", "cf-connecting-ip"];
+/// Headers a proxy adds to the requests it forwards: the Cloudflare tunnel's, and the ones
+/// nginx, Caddy, Traefik and the like set. Their peer is local, but the caller is not.
+pub const PROXIED_REQUEST_HEADERS: [&str; 5] = [
+    "cf-ray",
+    "cf-connecting-ip",
+    "x-forwarded-for",
+    "x-real-ip",
+    "forwarded",
+];
 
 /// Loopback, RFC 1918 and unique-local IPv6: the networks a sibling Docker container uses.
 pub const DEFAULT_SERVICE_API_ALLOWED_NETWORKS: [&str; 6] = [
@@ -46,6 +56,16 @@ impl ServiceApiKeyHash {
         }
         if !key.bytes().all(|byte| byte.is_ascii_graphic()) {
             return Err("service_api.key must be printable ASCII without spaces".to_string());
+        }
+        let distinct = key[SERVICE_API_KEY_PREFIX.len()..]
+            .bytes()
+            .collect::<std::collections::HashSet<_>>()
+            .len();
+        if distinct < SERVICE_API_KEY_MIN_DISTINCT_CHARS {
+            return Err(
+                "service_api.key looks like a placeholder: generate one with \"stk_$(openssl rand -hex 32)\""
+                    .to_string(),
+            );
         }
         Ok(Self(Sha256::digest(key.as_bytes()).into()))
     }
@@ -191,6 +211,12 @@ mod tests {
         assert!(ServiceApiKeyHash::from_key("stk_short").is_err());
         assert!(ServiceApiKeyHash::from_key("key_0123456789abcdef0123456789abcdef0123").is_err());
         assert!(ServiceApiKeyHash::from_key("stk_0123456789abcdef 0123456789abcdef0123").is_err());
+    }
+
+    #[test]
+    fn key_must_not_be_a_placeholder() {
+        assert!(ServiceApiKeyHash::from_key(&format!("stk_{}", "a".repeat(40))).is_err());
+        assert!(ServiceApiKeyHash::from_key(&format!("stk_{}", "1234".repeat(10))).is_err());
     }
 
     #[test]

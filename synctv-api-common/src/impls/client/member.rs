@@ -8,6 +8,7 @@ use synctv_core::service::{
     AddMemberWithOutboxRequest, MemberPermissionPatch, RoomJoinReviewListQuery,
     RoomJoinReviewRecord, UpdateMemberDisplayTagWithOutboxRequest,
     UpdateMemberRemarkNameWithOutboxRequest, UpdateMemberWithOutboxRequest,
+    TV_REVOKE_KICK_COOLDOWN_SECS,
 };
 
 use super::convert::{
@@ -413,9 +414,7 @@ impl ClientApiImpl {
                 last_name: profile
                     .and_then(|p| p.last_name.clone())
                     .unwrap_or_default(),
-                telegram_username: profile
-                    .and_then(|p| p.username.clone())
-                    .unwrap_or_default(),
+                telegram_username: profile.and_then(|p| p.username.clone()).unwrap_or_default(),
                 username: member.username,
                 is_online: member.is_online || member.connection_count > 0,
                 is_creator: room.created_by == id,
@@ -941,7 +940,71 @@ impl ClientApiImpl {
         )
     }
 
+    /// Kick a member, then unpair and kick the TVs they paired in the room: a TV must not
+    /// outlast the person who let it in.
     pub async fn kick_member(
+        &self,
+        user_id: &UserId,
+        room_id: &str,
+        req: synctv_proto::client::KickMemberRequest,
+    ) -> Result<synctv_proto::client::KickMemberResponse, ApiError> {
+        let target_user_id = req.user_id.clone();
+        let response = self.kick_one_member(user_id, room_id, req).await?;
+        let target_uid =
+            crate::impls::proto_validated_user_id(target_user_id, &self.public_id_codec)?;
+        self.remove_tvs_paired_by(room_id, target_uid).await?;
+        Ok(response)
+    }
+
+    /// Unpair and kick the TVs `member_id` paired in the room, once that member is gone.
+    pub(crate) async fn remove_tvs_paired_by(
+        &self,
+        room_id: &str,
+        member_id: UserId,
+    ) -> Result<(), ApiError> {
+        let rid = self.parse_room_id(room_id)?;
+        let tvs = self
+            .room_service
+            .revoke_tvs_paired_by(rid, member_id)
+            .await
+            .map_err(ApiError::from)?;
+        if tvs.is_empty() {
+            return Ok(());
+        }
+        // Kick as the creator, who may kick anyone in the room.
+        let creator_id = self
+            .room_service
+            .get_room(&rid)
+            .await
+            .map_err(ApiError::from)?
+            .created_by;
+        for tv_uid in tvs {
+            let still_member = self
+                .room_service
+                .get_member(&rid, &tv_uid)
+                .await
+                .map_err(ApiError::from)?
+                .is_some();
+            if !still_member {
+                continue;
+            }
+            let tv_public_id = self
+                .public_id_codec
+                .encode_user_id(tv_uid)
+                .map_err(ApiError::Internal)?;
+            let kick = synctv_proto::client::KickMemberRequest {
+                user_id: tv_public_id,
+                kick_cooldown_seconds: TV_REVOKE_KICK_COOLDOWN_SECS,
+            };
+            if let Err(error) = self.kick_one_member(&creator_id, room_id, kick).await {
+                // Its credentials are already revoked: it cannot refresh its session.
+                tracing::warn!(error = %error, tv_user_id = %tv_uid, "Failed to kick a TV whose pairer left");
+            }
+        }
+        Ok(())
+    }
+
+    async fn kick_one_member(
         &self,
         user_id: &UserId,
         room_id: &str,

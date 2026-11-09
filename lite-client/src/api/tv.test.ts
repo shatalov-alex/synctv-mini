@@ -77,6 +77,12 @@ describe('tv pairing parsing (served pbjson shapes)', () => {
     expect(claimErrorMessage(new TypeError('fetch'))).toMatch(/Network/);
   });
 
+  it('passes on the server reason when a TV refusal is not about playback control', () => {
+    const full = 'This room already has 10 TVs: unpair one first';
+    expect(claimErrorMessage(new ApiError(403, full))).toBe(full);
+    expect(claimErrorMessage(new ApiError(403, 'A TV cannot pair other TVs'))).toMatch(/cannot pair/);
+  });
+
   it('backs off on 429', () => {
     expect(startRetryDelayMs(new ApiError(429, ''))).toBe(65_000);
     expect(startRetryDelayMs(new Error('net'))).toBe(5_000);

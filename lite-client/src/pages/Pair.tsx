@@ -69,6 +69,10 @@ export function Pair({ code, me }: { code: string; me: User | null }) {
         <form class="card stack" onSubmit={claim}>
           <label class="small muted">Code shown on the TV</label>
           <CodeInput value={typed} onInput={setTyped} />
+          <p class="small muted">
+            Only continue if this code is on a TV in front of you. Whoever has the screen showing it joins
+            the room and sees what you watch.
+          </p>
           <label class="small muted">Room to show</label>
           {rooms === null ? (
             <p class="muted">Loading rooms…</p>

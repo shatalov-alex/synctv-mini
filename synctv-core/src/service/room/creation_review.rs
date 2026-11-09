@@ -49,7 +49,7 @@ impl RoomService {
             None => Self::membership_snapshot_username_tx(&mut tx, &request.requested_by).await?,
         };
 
-        self.ensure_user_can_create_room_now_tx(&mut tx, &request.requested_by)
+        self.ensure_user_can_create_room_now_tx(&mut tx, &request.requested_by, true)
             .await?;
         self.enforce_current_room_creation_policy(
             &request.requested_by,

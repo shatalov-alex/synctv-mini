@@ -261,6 +261,38 @@ impl TvDeviceRepository {
         Ok(devices)
     }
 
+    /// Whether `user_id` is a TV account (paired at some point, revoked or not).
+    pub async fn is_tv_user(&self, user_id: &UserId) -> Result<bool> {
+        let found = sqlx::query_scalar!(
+            r#"SELECT EXISTS(SELECT 1 FROM tv_devices WHERE user_id = $1) AS "found!""#,
+            user_id.as_i64(),
+        )
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(found)
+    }
+
+    /// Revoke the room's live TVs that `paired_by` paired. Returns their users.
+    pub async fn revoke_paired_by(
+        &self,
+        room_id: &RoomId,
+        paired_by: &UserId,
+    ) -> Result<Vec<UserId>> {
+        let users = sqlx::query_scalar!(
+            r#"
+            UPDATE tv_devices
+            SET revoked_at = CURRENT_TIMESTAMP
+            WHERE room_id = $1 AND paired_by = $2 AND revoked_at IS NULL
+            RETURNING user_id AS "user_id: UserId"
+            "#,
+            room_id.as_i64(),
+            paired_by.as_i64(),
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(users)
+    }
+
     /// Revoke the room's live TV owned by `user_id`. Returns whether one was revoked.
     pub async fn revoke(&self, room_id: &RoomId, user_id: &UserId) -> Result<bool> {
         let result = sqlx::query!(

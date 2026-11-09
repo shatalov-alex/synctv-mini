@@ -210,7 +210,7 @@ pub use room::{
 };
 pub use room::{
     normalize_tv_pairing_code, tv_pairing_secret_hash, TvPairingPoll, TvPairingStart,
-    TV_PAIRING_CODE_ALPHABET, TV_PAIRING_CODE_LEN, TV_PAIRING_POLL_INTERVAL_MS,
+    MAX_TVS_PER_ROOM, TV_PAIRING_CODE_ALPHABET, TV_PAIRING_CODE_LEN, TV_PAIRING_POLL_INTERVAL_MS,
     TV_PAIRING_TTL_SECS, TV_REVOKE_KICK_COOLDOWN_SECS,
 };
 pub use room::{

@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE tv_devices\n            SET revoked_at = CURRENT_TIMESTAMP\n            WHERE room_id = $1 AND paired_by = $2 AND revoked_at IS NULL\n            RETURNING user_id AS \"user_id: UserId\"\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "user_id: UserId",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "tv_devices",
+            "name": "user_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "940133eb5115ca032bda9adc26745448a8a9497d419b76c6d5128581145d125d"
+}

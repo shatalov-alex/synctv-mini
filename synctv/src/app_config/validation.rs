@@ -1537,8 +1537,10 @@ mod tests {
     fn service_api_key_and_networks_are_validated() {
         let mut config = ServiceApiConfig::default();
         assert!(validate_service_api(&config).is_ok());
-        config.key = format!("stk_{}", "a".repeat(64));
+        config.key = "stk_5f0c3a8d1e2b4c6a9f7e0d1c2b3a49586f7e6d5c4b3a2918".to_string();
         assert!(validate_service_api(&config).is_ok());
+        config.key = format!("stk_{}", "a".repeat(64));
+        assert!(validate_service_api(&config).is_err(), "placeholder key");
         config.key = "stk_tooshort".to_string();
         let error = validate_service_api(&config).expect_err("short key must be rejected");
         assert!(!error.contains("tooshort"), "error must not echo the key");

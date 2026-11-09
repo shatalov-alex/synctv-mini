@@ -329,6 +329,7 @@ impl RoomService {
             room_file_storage_service: options.room_file_storage_service,
             consistency: ConsistencyCoordinator::new(version_fence),
             admission_notifier: None,
+            users_can_create_rooms: true,
         }
     }
 
@@ -339,6 +340,13 @@ impl RoomService {
         notifier: Arc<dyn super::RoomAdmissionNotifier>,
     ) -> Self {
         self.admission_notifier = Some(notifier);
+        self
+    }
+
+    /// Allow or forbid room creation by plain user accounts (on by default).
+    #[must_use]
+    pub const fn with_users_can_create_rooms(mut self, allowed: bool) -> Self {
+        self.users_can_create_rooms = allowed;
         self
     }
 

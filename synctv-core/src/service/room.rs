@@ -124,7 +124,7 @@ pub use invites::{
 mod tv_pairing;
 pub use tv_pairing::{
     normalize_tv_pairing_code, tv_pairing_secret_hash, TvPairingPoll, TvPairingStart,
-    TV_PAIRING_CODE_ALPHABET, TV_PAIRING_CODE_LEN, TV_PAIRING_POLL_INTERVAL_MS,
+    MAX_TVS_PER_ROOM, TV_PAIRING_CODE_ALPHABET, TV_PAIRING_CODE_LEN, TV_PAIRING_POLL_INTERVAL_MS,
     TV_PAIRING_TTL_SECS, TV_REVOKE_KICK_COOLDOWN_SECS,
 };
 mod join;
@@ -262,6 +262,9 @@ pub struct RoomService {
 
     /// Optional best-effort observer of invite joins and TV pairings (e.g. the Telegram bot).
     admission_notifier: Option<Arc<dyn RoomAdmissionNotifier>>,
+
+    /// Whether plain user accounts may create rooms (admins always can).
+    users_can_create_rooms: bool,
 }
 
 impl std::fmt::Debug for RoomService {

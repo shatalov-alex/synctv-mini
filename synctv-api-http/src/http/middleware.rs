@@ -64,9 +64,7 @@ where
                 .with_authorization(authorization)
                 .with_client_ip(client_ip)
                 .with_socket_ip(peer_ip)
-                .with_via_cloudflare_tunnel(super::carries_cloudflare_tunnel_headers(
-                    &parts.headers,
-                ))
+                .with_via_proxy(super::carries_proxy_headers(&parts.headers))
                 .with_user_agent(user_agent)
                 .with_timeout(Some(synctv_core::resilience::timeout::HTTP_REQUEST_TIMEOUT)),
             ))

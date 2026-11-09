@@ -414,6 +414,8 @@ pub struct InitServicesOptions {
     pub read_pool: Option<PgPool>,
     /// Best-effort observer of invite joins and TV pairings (the Telegram admin notifier).
     pub room_admission_notifier: Option<Arc<dyn synctv_core::service::RoomAdmissionNotifier>>,
+    /// Whether plain user accounts may create rooms (`rooms.users_can_create`).
+    pub users_can_create_rooms: bool,
 }
 
 impl Default for InitServicesOptions {
@@ -427,6 +429,7 @@ impl Default for InitServicesOptions {
             realtime_outbox: None,
             read_pool: None,
             room_admission_notifier: None,
+            users_can_create_rooms: true,
         }
     }
 }
@@ -460,6 +463,7 @@ impl std::fmt::Debug for InitServicesOptions {
                 "room_admission_notifier",
                 &self.room_admission_notifier.as_ref().map(|_| "<injected>"),
             )
+            .field("users_can_create_rooms", &self.users_can_create_rooms)
             .finish()
     }
 }
@@ -1142,7 +1146,8 @@ pub async fn init_services_with_options(
     let room_service = match runtime_options.room_admission_notifier.clone() {
         Some(notifier) => room_service.with_admission_notifier(notifier),
         None => room_service,
-    };
+    }
+    .with_users_can_create_rooms(runtime_options.users_can_create_rooms);
     info!("RoomService initialized with construction-time dependencies");
 
     // Store the settings listen task handle so it can be joined on shutdown.
