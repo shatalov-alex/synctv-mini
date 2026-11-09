@@ -147,12 +147,19 @@ impl StreamMessageHandler {
         report: &synctv_proto::client::PlayerStatusReport,
     ) -> Result<(), String> {
         crate::impls::validate_proto_request(report).map_err(|error| error.to_string())?;
+        // Only those who may pause the room themselves can hold it; everyone else's player
+        // is still reported, but never holds anyone back.
+        let may_hold = !self.principal.is_guest()
+            && self
+                .check_realtime_permission(RoomPermission::CONTROL_PLAYBACK_STATE)
+                .await
+                .is_ok();
         self.playback_gate.report(
             &self.room_id,
             self.connection_id.as_str(),
             DeviceReport {
                 media_id: report.media_id.clone(),
-                participating: report.participating,
+                participating: report.participating && may_hold,
                 ready: report.ready,
                 position: report.position,
                 state_version: report.state_version,
