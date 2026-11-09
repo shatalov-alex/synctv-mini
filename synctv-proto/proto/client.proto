@@ -2752,7 +2752,7 @@ message PlaybackClientProfile {
   // Must match the server's current playback client profile version.
   uint32 profile_version = 9;
   PlaybackClientEnvironment environment = 10 [(buf.validate.field).enum.defined_only = true];
-  repeated PlaybackMediaCapability media_capabilities = 11 [(buf.validate.field).repeated.max_items = 64];
+  repeated PlaybackMediaCapability media_capabilities = 11 [(buf.validate.field).repeated.max_items = 128];
   bool supports_custom_http_headers = 12;
   bool supports_provider_proxy = 13;
   reserved 14 to 19;
@@ -3470,35 +3470,6 @@ message UnobserveResource {
     min_len: 1
     max_len: 128
   }];
-}
-
-// ==================== HTTP Realtime Sessions (SSE downlink + REST uplink) ====================
-
-// Creates a server-side realtime session whose lifetime is owned by a lease
-// (refreshed by the attached SSE stream and incoming message posts) instead of
-// a socket. The session carries the same semantics as a WebSocket connection:
-// admission, presence, observations with cursors, and WebRTC signaling.
-message CreateRealtimeSessionRequest {
-  // Observations to establish immediately after the session joins the room.
-  repeated ObserveResource initial_observations = 1;
-}
-
-message CreateRealtimeSessionResponse {
-  // Opaque session identifier used by the events/messages endpoints.
-  string session_id = 1 [(buf.validate.field).string = {
-    min_len: 8
-    max_len: 128
-  }];
-  // Lease TTL in milliseconds. The session is torn down when neither the SSE
-  // stream nor a message post refreshes it within this window.
-  int64 lease_ttl_ms = 2;
-}
-
-// A single client message posted to an HTTP realtime session. The payload is
-// exactly the WebSocket/gRPC `ClientMessage`; the server processes it through
-// the same handler, so behavior is transport-independent.
-message SendRealtimeSessionMessageRequest {
-  ClientMessage message = 1;
 }
 
 message ObservePlaybackState {
