@@ -1599,6 +1599,7 @@ impl PlaybackService {
             .await
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn switch_with_outbox(
         &self,
         room_id: RoomId,
@@ -1697,6 +1698,7 @@ impl PlaybackService {
         .await
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn play_next_internal(
         &self,
         room_id: &RoomId,

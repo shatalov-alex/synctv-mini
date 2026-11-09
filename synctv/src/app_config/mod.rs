@@ -1558,20 +1558,12 @@ impl Default for MediaConfig {
 }
 
 /// Who may create rooms.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct RoomsConfig {
-    /// Let plain user accounts create rooms. Off: only admins can, so invited guests and
-    /// paired TVs stay inside the rooms they were let into.
+    /// Let plain user accounts create rooms. Off (the default): only admins can, so invited
+    /// guests and paired TVs stay inside the rooms they were let into.
     pub users_can_create: bool,
-}
-
-impl Default for RoomsConfig {
-    fn default() -> Self {
-        Self {
-            users_can_create: false,
-        }
-    }
 }
 
 /// Service API key for another app on the internal network. Disabled while `key` is empty.

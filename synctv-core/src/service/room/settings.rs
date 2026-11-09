@@ -330,10 +330,7 @@ impl RoomService {
                         let updated_settings = apply(&current);
                         let mut tx = self.pool.begin().await?;
                         self.ensure_actor_has_room_permission_now_tx(
-                            &mut tx,
-                            &room_id,
-                            &user_id,
-                            permission,
+                            &mut tx, &room_id, &user_id, permission,
                         )
                         .await?;
                         let domain = CacheDomain::RoomSettings { room_id };
