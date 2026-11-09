@@ -405,12 +405,11 @@ impl ClientApiImpl {
             let paired_by_name = tv
                 .and_then(|tv| tv.paired_by)
                 .and_then(|by| profiles.get(&by))
-                .map(telegram_display_name)
-                .unwrap_or_default();
+                .map_or_default(telegram_display_name);
             let profile = profiles.get(&id);
             viewers.push(synctv_proto::client::RoomViewer {
                 user_id: member.user_id,
-                first_name: profile.map(|p| p.first_name.clone()).unwrap_or_default(),
+                first_name: profile.map_or_default(|p| p.first_name.clone()),
                 last_name: profile
                     .and_then(|p| p.last_name.clone())
                     .unwrap_or_default(),
