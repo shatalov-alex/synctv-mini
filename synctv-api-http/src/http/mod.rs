@@ -34,6 +34,7 @@ pub(crate) mod validation;
 pub(crate) mod web_ui;
 pub(crate) mod webrtc;
 pub(crate) mod websocket;
+pub(crate) mod webtransport;
 
 use crate::providers;
 use axum::{
@@ -1581,7 +1582,19 @@ fn register_all_routes() -> Router<AppState> {
                 .options(providers::playback_provider_options_preflight),
         )
         .route(
+            "/api/playback-providers/{roomId}/live/{version}/flv-stream/{rung}",
+            get(crate::providers::playback_provider::rtmp::get_rtmp_flv_stream)
+                .head(crate::providers::playback_provider::rtmp::head_rtmp_flv_stream)
+                .options(providers::playback_provider_options_preflight),
+        )
+        .route(
             "/api/playback-providers/{roomId}/rtmp/{version}/flv-stream",
+            get(crate::providers::playback_provider::rtmp::get_rtmp_flv_stream)
+                .head(crate::providers::playback_provider::rtmp::head_rtmp_flv_stream)
+                .options(providers::playback_provider_options_preflight),
+        )
+        .route(
+            "/api/playback-providers/{roomId}/rtmp/{version}/flv-stream/{rung}",
             get(crate::providers::playback_provider::rtmp::get_rtmp_flv_stream)
                 .head(crate::providers::playback_provider::rtmp::head_rtmp_flv_stream)
                 .options(providers::playback_provider_options_preflight),
@@ -1602,12 +1615,28 @@ fn register_all_routes() -> Router<AppState> {
                 .options(providers::playback_provider_options_preflight),
         )
         .route(
+            "/api/playback-providers/{roomId}/live/{version}/hls/{generationId}/{rung}/index.m3u8",
+            get(crate::providers::playback_provider::rtmp::get_rtmp_hls_playlist)
+                .options(providers::playback_provider_options_preflight),
+        )
+        .route(
             "/api/playback-providers/{roomId}/rtmp/{version}/hls/{generationId}/index.m3u8",
             get(crate::providers::playback_provider::rtmp::get_rtmp_hls_playlist)
                 .options(providers::playback_provider_options_preflight),
         )
         .route(
+            "/api/playback-providers/{roomId}/rtmp/{version}/hls/{generationId}/{rung}/index.m3u8",
+            get(crate::providers::playback_provider::rtmp::get_rtmp_hls_playlist)
+                .options(providers::playback_provider_options_preflight),
+        )
+        .route(
             "/api/playback-providers/{roomId}/live/{version}/hls/{generationId}/{segmentName}",
+            get(crate::providers::playback_provider::rtmp::get_rtmp_hls_segment)
+                .head(crate::providers::playback_provider::rtmp::head_rtmp_hls_segment)
+                .options(providers::playback_provider_options_preflight),
+        )
+        .route(
+            "/api/playback-providers/{roomId}/live/{version}/hls/{generationId}/{rung}/{segmentName}",
             get(crate::providers::playback_provider::rtmp::get_rtmp_hls_segment)
                 .head(crate::providers::playback_provider::rtmp::head_rtmp_hls_segment)
                 .options(providers::playback_provider_options_preflight),
@@ -1619,7 +1648,19 @@ fn register_all_routes() -> Router<AppState> {
                 .options(providers::playback_provider_options_preflight),
         )
         .route(
+            "/api/playback-providers/{roomId}/rtmp/{version}/hls/{generationId}/{rung}/{segmentName}",
+            get(crate::providers::playback_provider::rtmp::get_rtmp_hls_segment)
+                .head(crate::providers::playback_provider::rtmp::head_rtmp_hls_segment)
+                .options(providers::playback_provider_options_preflight),
+        )
+        .route(
             "/api/playback-providers/{roomId}/live-proxy/{version}/flv-stream",
+            get(crate::providers::playback_provider::live_proxy::get_live_proxy_flv_stream)
+                .head(crate::providers::playback_provider::live_proxy::head_live_proxy_flv_stream)
+                .options(providers::playback_provider_options_preflight),
+        )
+        .route(
+            "/api/playback-providers/{roomId}/live-proxy/{version}/flv-stream/{rung}",
             get(crate::providers::playback_provider::live_proxy::get_live_proxy_flv_stream)
                 .head(crate::providers::playback_provider::live_proxy::head_live_proxy_flv_stream)
                 .options(providers::playback_provider_options_preflight),
@@ -1635,7 +1676,18 @@ fn register_all_routes() -> Router<AppState> {
                 .options(providers::playback_provider_options_preflight),
         )
         .route(
+            "/api/playback-providers/{roomId}/live-proxy/{version}/hls/{generationId}/{rung}/index.m3u8",
+            get(crate::providers::playback_provider::live_proxy::get_live_proxy_hls_playlist)
+                .options(providers::playback_provider_options_preflight),
+        )
+        .route(
             "/api/playback-providers/{roomId}/live-proxy/{version}/hls/{generationId}/{segmentName}",
+            get(crate::providers::playback_provider::live_proxy::get_live_proxy_hls_segment)
+                .head(crate::providers::playback_provider::live_proxy::head_live_proxy_hls_segment)
+                .options(providers::playback_provider_options_preflight),
+        )
+        .route(
+            "/api/playback-providers/{roomId}/live-proxy/{version}/hls/{generationId}/{rung}/{segmentName}",
             get(crate::providers::playback_provider::live_proxy::get_live_proxy_hls_segment)
                 .head(crate::providers::playback_provider::live_proxy::head_live_proxy_hls_segment)
                 .options(providers::playback_provider_options_preflight),

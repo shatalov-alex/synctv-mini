@@ -201,6 +201,15 @@ fn unix_timestamp_secs() -> u64 {
     }
 }
 
+/// Extract the `{id}` of an `ml{id}` favorites URL: `/list/ml{id}` or the legacy
+/// `/medialist/{detail,play}/ml{id}`. `ml{id}` is the favorite folder's media ID.
+fn favorite_media_id<'a>(segments: &[&'a str]) -> Option<&'a str> {
+    let (["list", segment, ..] | ["medialist", "detail" | "play", segment, ..]) = segments else {
+        return None;
+    };
+    segment.strip_prefix("ml")
+}
+
 fn parse_colon_duration(value: &str) -> u64 {
     value.split(':').fold(0_u64, |duration, component| {
         duration
@@ -2366,13 +2375,13 @@ impl BilibiliClient {
                     area_id: positive_id(&area_id, "live area ID")?,
                 }
             } else {
-                let room_id = segments
-                    .strip_prefix(&["live"])
-                    .unwrap_or(&segments)
-                    .first()
-                    .ok_or_else(|| {
-                        BilibiliError::Parse("Missing Bilibili live room ID".to_string())
-                    })?;
+                // `/live/{id}`, the pop-out player `/blanc/{id}` and mobile share `/h5/{id}`.
+                let room_id = match segments.first() {
+                    Some(&("live" | "blanc" | "h5")) => &segments[1..],
+                    _ => &segments[..],
+                }
+                .first()
+                .ok_or_else(|| BilibiliError::Parse("Missing Bilibili live room ID".to_string()))?;
                 BilibiliResource::Live {
                     room_id: positive_id(room_id, "live room ID")?,
                 }
@@ -2460,8 +2469,14 @@ impl BilibiliClient {
             } else {
                 return Err(BilibiliError::Parse("Invalid Bilibili PGC URL".to_string()));
             }
-        } else if segments.first() == Some(&"watchlater") {
+        } else if segments.first() == Some(&"watchlater")
+            || segments.starts_with(&["list", "watchlater"])
+        {
             BilibiliResource::WatchLater
+        } else if let Some(media_id) = favorite_media_id(&segments) {
+            BilibiliResource::FavoriteVideos {
+                media_id: positive_id(media_id, "favorite media ID")?,
+            }
         } else if segments.first() == Some(&"list") {
             let list_id = positive_id(
                 segments.get(1).copied().unwrap_or_default(),

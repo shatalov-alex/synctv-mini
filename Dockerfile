@@ -113,10 +113,13 @@ LABEL org.opencontainers.image.title="SyncTV" \
     org.opencontainers.image.source="https://github.com/synctv-org/synctv" \
     org.opencontainers.image.licenses="MIT"
 
-# Install runtime dependencies (curl needed for healthcheck)
-RUN apt-get update && apt-get install -y \
+# Install runtime dependencies (curl needed for healthcheck; ffmpeg is
+# spawned as a subprocess by the live transcode quality rungs — the Debian
+# build ships the libx264 and aac encoders they require)
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
-    curl && rm -rf /var/lib/apt/lists/*
+    curl \
+    ffmpeg && rm -rf /var/lib/apt/lists/*
 
 # Create synctv for running the application
 RUN useradd -m -u 1000 synctv
@@ -144,7 +147,10 @@ RUN command -v synctv && synctv --version
 # 50051: dedicated cluster gRPC
 # 9090: internal Prometheus metrics listener
 # 1935: RTMP (livestream)
-EXPOSE 8080 8081 50051 9090 1935
+# 8443: HTTPS when [server.tls] is enabled (default port)
+# 8443/udp: HTTP/3 (QUIC) + WebTransport when [server.quic] is enabled;
+#           the UDP port defaults to server.tls.port
+EXPOSE 8080 8081 8443 8443/udp 50051 9090 1935
 
 # Health check against the HTTP health endpoint
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \

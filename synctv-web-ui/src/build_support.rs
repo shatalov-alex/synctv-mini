@@ -61,6 +61,7 @@ impl Default for FlutterBuild {
             arguments: vec![
                 "--release".to_owned(),
                 "--no-web-resources-cdn".to_owned(),
+                "--wasm".to_owned(),
                 "--no-wasm-dry-run".to_owned(),
             ],
             dart_defines: BTreeMap::new(),
@@ -531,10 +532,48 @@ pub fn build_fingerprint(
     hex::encode(hasher.finalize())
 }
 
+/// Whether a dist-relative file is an engine symbolication map. Nothing in
+/// the generated runtime JavaScript fetches `*.js.symbols`; they only help
+/// developers demangle engine stack traces offline. Builds exclude them from
+/// the exported dist and the embedded asset table; the source and cache
+/// directories themselves are never modified.
+pub(crate) fn is_pruned_engine_artifact(relative: &str) -> bool {
+    let path = relative.trim_start_matches("./");
+    path.starts_with("canvaskit/") && path.ends_with(".js.symbols")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn wasm_assets_map_to_browser_required_mime_types() {
+        assert_eq!(
+            crate::content_type::content_type("main.dart.wasm"),
+            "application/wasm"
+        );
+        assert_eq!(
+            crate::content_type::content_type("main.dart.mjs"),
+            "text/javascript; charset=utf-8"
+        );
+        // Browsers refuse `import()` of modules served as octet-stream, so
+        // the loader must resolve to a JavaScript MIME type.
+        assert_eq!(
+            crate::content_type::content_type("main.dart.js"),
+            "text/javascript; charset=utf-8"
+        );
+    }
+
+    #[test]
+    fn wasm_and_module_assets_are_precompressed() {
+        assert!(crate::content_type::compressible_content_type(
+            "application/wasm"
+        ));
+        assert!(crate::content_type::compressible_content_type(
+            "text/javascript; charset=utf-8"
+        ));
+    }
 
     #[test]
     fn local_config_takes_precedence() -> Result<(), Box<dyn std::error::Error>> {
@@ -828,5 +867,26 @@ mod tests {
             .output()?;
         assert!(output.status.success());
         Ok(String::from_utf8(output.stdout)?.trim().to_owned())
+    }
+
+    #[test]
+    fn engine_artifact_predicate_targets_only_symbolication_maps() {
+        for (path, pruned) in [
+            ("canvaskit/canvaskit.js.symbols", true),
+            ("canvaskit/chromium/canvaskit.js.symbols", true),
+            ("canvaskit/skwasm.js.symbols", true),
+            ("canvaskit/wimp.js.symbols", true),
+            ("canvaskit/canvaskit.js", false),
+            ("canvaskit/canvaskit.wasm", false),
+            ("canvaskit/chromium/canvaskit.wasm", false),
+            ("canvaskit/skwasm_heavy.wasm", false),
+            ("canvaskit/wimp.js", false),
+            ("canvaskit/wimp.wasm", false),
+            ("canvaskit/experimental_webparagraph/canvaskit.wasm", false),
+            ("main.dart.js", false),
+            ("assets/fonts/Roboto.ttf", false),
+        ] {
+            assert_eq!(is_pruned_engine_artifact(path), pruned, "{path}");
+        }
     }
 }

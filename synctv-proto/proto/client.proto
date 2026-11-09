@@ -1357,7 +1357,16 @@ message RefreshTokenResponse {
 
 message GetProfileRequest {}
 
-message CloseAccountRequest {}
+message CloseAccountRequest {
+  // One-time token from a completed sensitive operation verification
+  // (password, passkey, authenticator app, or verified email). Account
+  // closure deletes the user and every room they own, so it requires the
+  // same step-up verification as the other destructive operations.
+  string verification_id = 1 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 128
+  }];
+}
 
 message CloseAccountResponse {
   bool success = 1;
@@ -2743,7 +2752,7 @@ message PlaybackClientProfile {
   // Must match the server's current playback client profile version.
   uint32 profile_version = 9;
   PlaybackClientEnvironment environment = 10 [(buf.validate.field).enum.defined_only = true];
-  repeated PlaybackMediaCapability media_capabilities = 11 [(buf.validate.field).repeated.max_items = 64];
+  repeated PlaybackMediaCapability media_capabilities = 11 [(buf.validate.field).repeated.max_items = 128];
   bool supports_custom_http_headers = 12;
   bool supports_provider_proxy = 13;
   reserved 14 to 19;
@@ -3542,7 +3551,10 @@ message ObserveChatEvents {
   // Empty uses the default user-visible set: USER.
   // System message types, such as SYSTEM_MEMBER_JOINED and SYSTEM_PLAYBACK_CHANGED,
   // are included explicitly.
-  repeated ChatMessageType include_message_types = 2 [(buf.validate.field).repeated.items.enum.defined_only = true];
+  repeated ChatMessageType include_message_types = 2 [(buf.validate.field).repeated = {
+    max_items: 16
+    items: { enum: { defined_only: true } }
+  }];
 }
 
 message ObserveChatPinEvents {
@@ -4937,7 +4949,10 @@ message GetChatHistoryRequest {
   string cursor = 2; // Opaque keyset cursor returned by the server as "<rfc3339_created_at>|<message_id>".
   // Empty uses the default user-visible set: USER.
   // Include system message types explicitly when they should appear in history and cursors.
-  repeated ChatMessageType include_message_types = 3 [(buf.validate.field).repeated.items.enum.defined_only = true];
+  repeated ChatMessageType include_message_types = 3 [(buf.validate.field).repeated = {
+    max_items: 16
+    items: { enum: { defined_only: true } }
+  }];
 }
 
 message GetChatHistoryResponse {
@@ -5005,7 +5020,10 @@ message GetChatPlaybackMessagesRequest {
   double after_seconds = 6;
   int32 limit = 7;
   bool include_deleted = 8;
-  repeated ChatMessageType include_message_types = 9 [(buf.validate.field).repeated.items.enum.defined_only = true];
+  repeated ChatMessageType include_message_types = 9 [(buf.validate.field).repeated = {
+    max_items: 16
+    items: { enum: { defined_only: true } }
+  }];
 }
 
 message GetChatPlaybackMessagesResponse {
@@ -5296,11 +5314,50 @@ message GetPublicSettingsResponse {
 
 message GetServerInfoRequest {}
 
+// Realtime transports the server advertises. Clients intersect this list with
+// their own platform capabilities and local preferences to pick a transport,
+// demoting on failure (see each client's negotiation policy).
+enum RealtimeTransportKind {
+  REALTIME_TRANSPORT_KIND_UNSPECIFIED = 0;
+  // Bidirectional WebSocket stream (`/ws/rooms/{roomId}`).
+  REALTIME_TRANSPORT_KIND_WEB_SOCKET = 1;
+  // HTTP realtime session: SSE downlink + REST uplink.
+  REALTIME_TRANSPORT_KIND_SSE = 2;
+  // WebTransport session over the server's HTTP/3 (QUIC) listener.
+  REALTIME_TRANSPORT_KIND_WEB_TRANSPORT = 3;
+  // Bidirectional gRPC `MessageStream` on the same API port.
+  REALTIME_TRANSPORT_KIND_GRPC = 4;
+}
+
+message RealtimeTransportCapability {
+  RealtimeTransportKind kind = 1 [(buf.validate.field).enum = {
+    defined_only: true
+    not_in: [0]
+  }];
+  // Base path or endpoint pattern for the transport, e.g. `/ws/rooms/{roomId}`
+  // or `/api/rooms/{roomId}/realtime/sessions`. Informational: clients
+  // generally derive concrete URLs from their own server endpoint config.
+  string path = 2;
+  // Base64 SHA-256 of the WebTransport listener certificate's DER encoding.
+  // Present on WEB_TRANSPORT capabilities whenever the certificate hash is
+  // readable; clients pass it as a WebTransport `serverCertificateHashes`
+  // entry so self-signed deployments work without manual pinning, refreshing
+  // it from each server-info response. The advertised pin inherits exactly
+  // the delivery channel's trust: clients must apply it only when the
+  // server-info response arrived over a PKI-validated channel (validated
+  // https), and must honor an operator-configured profile pin first; over
+  // an unvalidated channel the pin is attacker-substitutable and must be
+  // ignored.
+  string certificate_hash = 3;
+}
+
 message GetServerInfoResponse {
   // Stable logical server identity. The server automatically initializes it
   // in runtime settings storage; clients only read it.
   string server_id = 1;
   string server_name = 2;
+  // Realtime transports this deployment advertises.
+  repeated RealtimeTransportCapability transports = 3;
 }
 
 // ==================== Public Server Time ====================

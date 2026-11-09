@@ -74,6 +74,26 @@ server:
   # Maximum time in seconds to wait for active connections to drain during shutdown.
   # Defaults to 30 seconds. Increase for deployments with many long-lived connections.
   shutdown_drain_timeout_seconds: 30
+  # Shared API TLS: one certificate covers the HTTPS listener (TCP) and the
+  # HTTP/3 listener (UDP), following the nginx/Caddy site-certificate model.
+  # Cert/key paths follow the same rules as the static TLS files above
+  # (relative to this config file, not rebased through data_dir).
+  tls:
+    enabled: false
+    # HTTPS TCP port (must differ from the plain HTTP port above).
+    port: 8443
+    # cert_path: "./tls/api.crt"
+    # key_path: "./tls/api.key"
+  # HTTP/3 (QUIC) + WebTransport on top of server.tls. The UDP port defaults
+  # to server.tls.port; one socket serves the full router plus WebTransport
+  # sessions, and TCP responses advertise the endpoint via Alt-Svc.
+  quic:
+    enabled: false
+    # port: 8443
+    # Maximum concurrent WebTransport sessions on the QUIC listener.
+    # max_webtransport_sessions: 256
+    # Alt-Svc max-age in seconds advertised on TCP responses.
+    # alt_svc_max_age_seconds: 86400
   logging:
     level: "info"
     format: "text"
@@ -408,6 +428,12 @@ proxy_slice_cache:
   # Enable range-based proxy slice caching at process startup.
   # This is not dynamically toggled at runtime.
   enabled: true
+  # Maximum in-flight slice fetches per client request while assembling a
+  # bounded range response (default 4). Total upstream fan-out stays bounded
+  # by per-slice single-flighting across concurrent requests.
+  # Environment variables:
+  #   SYNCTV_PROXY_SLICE_CACHE_RANGE_FETCH_CONCURRENCY
+  # range_fetch_concurrency: 4
   # Enable persisted proxy slice files on local/shared storage.
   file_backend_enabled: false
   # Relative file_cache_dir values are resolved from data_dir.
@@ -481,6 +507,26 @@ livestream:
     max_sdp_bytes: 262144
     max_sessions: 1000
     max_session_duration_seconds: 86400
+  # Live transcode quality rungs. Rungs are scheduled on demand by the node
+  # that owns the live source; other nodes relay a rung that is already live.
+  # The ffmpeg engine spawns an ffmpeg binary (bundled in the official
+  # container image; install one for bare-binary deployments).
+  # Presets are ordered best-first; preset names must be usable as stream
+  # key components (letters, digits, '-', '_').
+  transcode:
+    enabled: true
+    workers:
+      - name: "local"
+        priority: 100
+        engine: "ffmpeg"
+        max_concurrent: 2
+        binary: "ffmpeg"
+    presets:
+      - name: "720p"
+        height: 720
+        video_kbps: 2500
+        audio_kbps: 96
+        max_fps: 30
 
 file_storage:
   # Named backend selected by product features when they do not override it.

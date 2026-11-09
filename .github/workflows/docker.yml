@@ -82,13 +82,13 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2026-10-28
+          toolchain: nightly-2026-11-03
 
       - name: Install Flutter
         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           channel: stable
-          flutter-version: 3.47.7
+          flutter-version: 3.47.9
           cache: true
 
       - name: Cache Web build inputs
@@ -141,12 +141,14 @@ jobs:
         linux/arm64=ubuntu-24.04-arm
       distribute: true
       platforms: linux/amd64,linux/arm64
-      output: ${{ github.event_name == 'push' && 'image' || 'local' }}
+      # The local export stalls on current runner images; pull requests keep
+      # push disabled so the image only lands in the builder store.
+      output: image
       push: ${{ github.event_name == 'push' }}
       artifact-upload: false
       sign: ${{ github.event_name == 'push' && 'auto' || 'false' }}
-      cache: true
-      cache-mode: max
+      cache: false
+      cache-mode: min
       cache-scope: synctv-image
       build-args: |
         SYNCTV_CARGO_BUILD_PROFILE=${{ github.event_name == 'pull_request' && 'dev' || 'release' }}

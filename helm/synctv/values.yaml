@@ -40,7 +40,13 @@ postgresql:
     persistence:
       size: 20Gi
       storageClass: ""
-    resources: {}
+    resources:
+      requests:
+        cpu: 500m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
   kubeblocks:
     clusterName: ""
     clusterDef: "postgresql"
@@ -59,6 +65,12 @@ postgresql:
     replicas: 2
     terminationPolicy: Retain
     disableExporter: true
+    bootstrapResources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        memory: 64Mi
     storage:
       size: 20Gi
       storageClass: ""
@@ -90,7 +102,13 @@ redis:
     persistence:
       size: 8Gi
       storageClass: ""
-    resources: {}
+    resources:
+      requests:
+        cpu: 500m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
   kubeblocks:
     clusterName: ""
     clusterDef: "redis"
@@ -363,6 +381,43 @@ config:
       ## output: {type: file, path: /data/logs/server.log, rotation: {strategy: daily, maxFiles: 30}}
       output: stdout
       color: auto
+    ## Shared API TLS: one certificate covers the HTTPS listener (TCP) and
+    ## the HTTP/3 listener (UDP), following the nginx/Caddy site-certificate
+    ## model. Plain HTTP keeps serving on server.port.
+    tls:
+      enabled: false
+      ## HTTPS TCP port (must differ from server.port); the HTTP/3 UDP port
+      ## defaults to this value.
+      port: 8443
+      ## Certificate source (pick one):
+      ##   existingSecret — Secret with tls.crt/tls.key keys (kubernetes.io/tls)
+      ##   certManager    — chart renders a cert-manager Certificate; dnsNames
+      ##                    must cover the public hostname clients dial
+      ##   certPath/keyPath — raw in-container file paths for certificates
+      ##                    mounted through extraVolumes/extraVolumeMounts
+      existingSecret: ""
+      certManager:
+        enabled: false
+        # dnsNames: ["synctv.example.com"]
+        duration: "2160h"
+        renewBefore: "720h"
+        issuerRef:
+          name: ""
+          kind: "Issuer"
+          group: "cert-manager.io"
+      certPath: ""
+      keyPath: ""
+    ## HTTP/3 (QUIC) + WebTransport on top of server.tls. One UDP socket
+    ## serves the full router (REST, gRPC, SSE) plus WebTransport sessions;
+    ## TCP responses advertise the endpoint via Alt-Svc.
+    quic:
+      enabled: false
+      ## UDP port; defaults to server.tls.port when unset or 0.
+      port: 0
+      ## Maximum concurrent WebTransport sessions on the QUIC listener.
+      maxWebtransportSessions: 256
+      ## Alt-Svc max-age (seconds) advertised on TCP responses.
+      altSvcMaxAgeSeconds: 86400
 
   health:
     enabled: true
@@ -519,6 +574,27 @@ config:
       maxSdpBytes: 262144
       maxSessions: 1000
       maxSessionDurationSeconds: 86400
+    ## Live transcode quality rungs, scheduled on demand by the node that
+    ## owns the live source. The ffmpeg engine spawns the ffmpeg binary
+    ## bundled in the official image. Presets are ordered best-first;
+    ## preset names must be valid as stream key components (letters,
+    ## digits, '-', '_').
+    transcode:
+      enabled: false
+      workers: []
+      # workers:
+      #   - name: "local"
+      #     priority: 100
+      #     engine: "ffmpeg"
+      #     maxConcurrent: 2
+      #     binary: "ffmpeg"
+      presets: []
+      # presets:
+      #   - name: "720p"
+      #     height: 720
+      #     videoKbps: 1200
+      #     audioKbps: 64
+      #     maxFps: 30
 
   ## FileStorageConfig
   ## The built-in "disabled" backend always exists. Database backends store
@@ -927,6 +1003,12 @@ networkPolicy:
   ## Service is intentionally reachable by arbitrary clients.
   allowAnyStunSource: false
   stunSourceCIDRs: []
+  ## Allow HTTP/3 (QUIC) UDP traffic from any IPv4 source. Set true (or list
+  ## CIDRs below) when config.server.quic is enabled and the h3 Service port
+  ## is intentionally reachable by clients; otherwise the NetworkPolicy drops
+  ## QUIC datagrams.
+  allowAnyH3Source: false
+  h3SourceCIDRs: []
   ## CIDR ranges allowed for external PostgreSQL/Redis egress when the matching
   ## dependency mode is "external". Set allowAnyExternalDatabaseEgress=true for
   ## dynamic externally hosted databases, or provide explicit CIDRs.

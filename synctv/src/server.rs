@@ -2880,6 +2880,8 @@ impl SyncTvServer {
         shared_provider_runtime: &SharedProviderPlaybackRuntime,
     ) -> anyhow::Result<JoinHandle<anyhow::Result<()>>> {
         let api_address = self.config.api_address();
+        let quic_config = self.config.server.quic.clone();
+        let server_tls_config = self.config.server.tls.clone();
         let grpc_router = self
             .build_grpc_router(
                 &shared_http_app_state.runtime_settings,
@@ -2904,17 +2906,241 @@ impl SyncTvServer {
 
         info!("API server listening on {}", http_addr);
 
+        // Fail fast on unusable TLS / HTTP/3 configuration before the server
+        // boots. One shared certificate covers the HTTPS listener and the
+        // HTTP/3 listener (nginx/Caddy model).
+        if server_tls_config.enabled {
+            anyhow::ensure!(
+                server_tls_config.port != http_addr.port(),
+                "server.tls.port ({}) must differ from the plain HTTP port ({})",
+                server_tls_config.port,
+                http_addr.port()
+            );
+            let (cert_pem, key_pem) = tokio::join!(
+                tokio::fs::read(&server_tls_config.cert_path),
+                tokio::fs::read(&server_tls_config.key_path)
+            );
+            anyhow::ensure!(
+                cert_pem.is_ok() && key_pem.is_ok(),
+                "server.tls is enabled but the certificate or key file cannot be read"
+            );
+        }
+        anyhow::ensure!(
+            !quic_config.enabled || server_tls_config.enabled,
+            "server.quic is enabled but server.tls is disabled; HTTP/3 requires \
+the shared server TLS configuration"
+        );
+
         let handle = tokio::spawn(async move {
             let mut rx = shutdown_rx;
             let proxy_cache_lifecycle =
                 synctv_api::start_proxy_cache_lifecycle(&shared_http_app_state.proxy_slice_cache);
+            let graceful_cancel = tokio_util::sync::CancellationToken::new();
+            let graceful_cancel_clone = graceful_cancel.clone();
             let graceful = async move {
                 if rx.changed().await.is_err() {
                     warn!("API server shutdown signal channel closed");
                 }
+                graceful_cancel_clone.cancel();
             };
 
-            let router = http_router.merge(grpc_router);
+            let mut router = http_router.merge(grpc_router);
+
+            // Shared TLS material: the HTTPS listener (TCP) and the HTTP/3
+            // listener (UDP) terminate the same certificate.
+            let shared_rustls_config = if server_tls_config.enabled {
+                match synctv_quic::load_tls_server_config(
+                    &server_tls_config.cert_path,
+                    &server_tls_config.key_path,
+                )
+                .await
+                {
+                    Ok(config) => Some(config),
+                    Err(error) => {
+                        error!(
+                            error = %error,
+                            "server TLS configuration failed to load; serving plain HTTP only"
+                        );
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+
+            // HTTPS listener: same router over TLS on server.tls.port.
+            if let Some(rustls_config) = shared_rustls_config.clone() {
+                let tls_addr = std::net::SocketAddr::new(http_addr.ip(), server_tls_config.port);
+                match tokio::net::TcpListener::bind(tls_addr).await {
+                    Ok(tcp_listener) => {
+                        info!("HTTPS API server listening on {tls_addr}");
+                        // Shared certificate, transport-specific ALPN: the
+                        // QUIC loader pins the h3 protocols, so the TCP
+                        // listener negotiates the standard web protocols.
+                        let mut https_rustls_config = rustls_config;
+                        https_rustls_config.alpn_protocols =
+                            vec![b"h2".to_vec(), b"http/1.1".to_vec()];
+                        let acceptor = tokio_rustls::TlsAcceptor::from(std::sync::Arc::new(
+                            https_rustls_config,
+                        ));
+                        let tls_make_service = router
+                            .clone()
+                            .layer(axum::middleware::from_fn(
+                                |mut request: axum::http::Request<axum::body::Body>,
+                                 next: axum::middleware::Next| async move {
+                                    if request
+                                        .extensions()
+                                        .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+                                        .is_none()
+                                    {
+                                        let peer = request
+                                            .extensions()
+                                            .get::<axum::extract::ConnectInfo<TlsApiConnectInfo>>()
+                                            .map(|info| info.0 .0);
+                                        if let Some(peer) = peer {
+                                            request
+                                                .extensions_mut()
+                                                .insert(axum::extract::ConnectInfo(peer));
+                                        }
+                                    }
+                                    next.run(request).await
+                                },
+                            ))
+                            .into_make_service_with_connect_info::<TlsApiConnectInfo>();
+                        let tls_cancel = graceful_cancel.clone();
+                        tokio::spawn(async move {
+                            let tls_server = axum::serve(
+                                TlsApiListener::new(tcp_listener, acceptor),
+                                tls_make_service,
+                            )
+                            .with_graceful_shutdown(async move { tls_cancel.cancelled().await });
+                            if let Err(error) = tls_server.await {
+                                tracing::error!(error = %error, "HTTPS API server error");
+                            }
+                        });
+                    }
+                    Err(error) => {
+                        error!(
+                            error = %error,
+                            "HTTPS listener failed to bind on {tls_addr}; serving plain HTTP only"
+                        );
+                    }
+                }
+            }
+
+            // HTTP/3 (QUIC) listener: same router over UDP, plus WebTransport
+            // room sessions; TCP responses advertise the endpoint via Alt-Svc.
+            if quic_config.enabled {
+                if let Some(rustls_config) = shared_rustls_config.clone() {
+                    {
+                        let udp_port = quic_config.port.unwrap_or(server_tls_config.port);
+                        // IPv6 listen addresses only parse via SocketAddr — a
+                        // `ip:port` format string mangles `::` into `::8080`.
+                        let bind_addr = std::net::SocketAddr::new(http_addr.ip(), udp_port);
+                        let wt_handler = std::sync::Arc::new(synctv_api::RoomWebTransportHandler {
+                            state: (*shared_http_app_state).clone(),
+                        });
+                        // The HTTP/3 path attaches the QUIC peer address as a
+                        // `PeerAddress` extension (synctv-quic has no axum
+                        // dependency); synthesize the `ConnectInfo<SocketAddr>`
+                        // every extractor already reads so per-IP rate limiting,
+                        // brute-force lockout, and audit attribution work over
+                        // HTTP/3 exactly as they do over TCP.
+                        let h3_router = router.clone().layer(axum::middleware::from_fn(
+                            |mut request: axum::http::Request<axum::body::Body>,
+                             next: axum::middleware::Next| async move {
+                                if request
+                                    .extensions()
+                                    .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+                                    .is_none()
+                                {
+                                    // PeerAddress is Copy; take it out of the
+                                    // immutable borrow before the mutable insert.
+                                    let peer = request
+                                        .extensions()
+                                        .get::<synctv_quic::PeerAddress>()
+                                        .copied();
+                                    if let Some(peer) = peer {
+                                        request
+                                            .extensions_mut()
+                                            .insert(axum::extract::ConnectInfo(peer.0));
+                                    }
+                                }
+                                next.run(request).await
+                            },
+                        ));
+                        match synctv_quic::serve_quic::<_, axum::body::Body, axum::body::Body, _>(
+                            bind_addr,
+                            synctv_quic::QuicServerConfig {
+                                rustls: rustls_config,
+                                max_webtransport_sessions: quic_config.max_webtransport_sessions,
+                            },
+                            h3_router,
+                            // Stream the HTTP/3 request body straight into
+                            // axum (bidirectional gRPC and early responses
+                            // work without buffering the upload first).
+                            axum::body::Body::new,
+                            Some(wt_handler),
+                            graceful_cancel.clone(),
+                        )
+                        .await
+                        {
+                            Ok(bound) => {
+                                info!("HTTP/3 (QUIC) server listening on {bound}");
+                                // Advertise only after a successful bind: browsers
+                                // cache Alt-Svc, and a phantom endpoint would
+                                // break the TCP API for clients that honor it.
+                                let alt_svc = format!(
+                                    "h3=\":{}\"; ma={}",
+                                    bound.port(),
+                                    quic_config.alt_svc_max_age_seconds
+                                )
+                                .parse::<axum::http::HeaderValue>()
+                                .expect("Alt-Svc header value is ASCII");
+                                router = router.layer(axum::middleware::from_fn(
+                                    move |request: axum::http::Request<axum::body::Body>,
+                                          next: axum::middleware::Next| {
+                                        let alt_svc = alt_svc.clone();
+                                        async move {
+                                            let mut response = next.run(request).await;
+                                            response
+                                                .headers_mut()
+                                                .insert(axum::http::header::ALT_SVC, alt_svc);
+                                            response
+                                        }
+                                    },
+                                ));
+
+                                // Pin the served certificate in the advertisement so
+                                // self-signed deployments work without manual client
+                                // configuration; unreadable hashes pin nothing.
+                                let certificate_hash = synctv_quic::certificate_hash_base64(
+                                    &server_tls_config.cert_path,
+                                )
+                                .await
+                                .unwrap_or_default();
+
+                                shared_http_app_state
+                                    .realtime_transport_advertisement
+                                    .write()
+                                    .push(synctv_proto::client::RealtimeTransportCapability {
+                                        kind:
+                                            synctv_proto::client::RealtimeTransportKind::WebTransport
+                                                as i32,
+                                        path: synctv_api::WEBTRANSPORT_ROOMS_PATH.to_string(),
+                                        certificate_hash,
+                                    });
+                            }
+                            Err(error) => {
+                                error!(
+                                    error = %error,
+                                    "HTTP/3 (QUIC) listener failed to start; serving TCP only"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
 
             let server = axum::serve(
                 listener,
@@ -3253,6 +3479,69 @@ async fn shutdown_signal() {
         () = ctrl_c => { info!("Received Ctrl+C"); }
         () = terminate => { info!("Received SIGTERM"); }
         () = sighup => { /* SIGHUP never completes - it loops forever */ }
+    }
+}
+
+/// TCP listener that terminates TLS before handing connections to
+/// `axum::serve`, so the HTTPS API listener works without an axum-server
+/// dependency. Failed handshakes are logged and dropped; the listener keeps
+/// accepting (mirroring axum's TcpListener accept-loop semantics).
+struct TlsApiListener {
+    listener: tokio::net::TcpListener,
+    acceptor: tokio_rustls::TlsAcceptor,
+}
+
+impl TlsApiListener {
+    fn new(listener: tokio::net::TcpListener, acceptor: tokio_rustls::TlsAcceptor) -> Self {
+        Self { listener, acceptor }
+    }
+}
+
+impl axum::serve::Listener for TlsApiListener {
+    type Io = tokio_rustls::server::TlsStream<tokio::net::TcpStream>;
+    type Addr = std::net::SocketAddr;
+
+    async fn accept(&mut self) -> (Self::Io, Self::Addr) {
+        loop {
+            match self.listener.accept().await {
+                Ok((stream, remote_addr)) => match self.acceptor.accept(stream).await {
+                    Ok(tls_stream) => return (tls_stream, remote_addr),
+                    Err(error) => {
+                        tracing::warn!(
+                            error = %error,
+                            "TLS handshake failed; dropping the connection and continuing"
+                        );
+                    }
+                },
+                Err(error) => {
+                    tracing::error!(
+                        error = %error,
+                        "HTTPS listener accept failed; retrying after a short delay"
+                    );
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                }
+            }
+        }
+    }
+
+    fn local_addr(&self) -> std::io::Result<Self::Addr> {
+        self.listener.local_addr()
+    }
+}
+
+/// Peer address produced by [`TlsApiListener`] for axum's
+/// `into_make_service_with_connect_info`. A newtype sidesteps the orphan
+/// rule; the HTTPS router re-inserts the conventional
+/// `ConnectInfo<SocketAddr>` extension from it, exactly like the HTTP/3
+/// path synthesizes one from `PeerAddress`.
+#[derive(Clone, Copy, Debug)]
+struct TlsApiConnectInfo(std::net::SocketAddr);
+
+impl axum::extract::connect_info::Connected<axum::serve::IncomingStream<'_, TlsApiListener>>
+    for TlsApiConnectInfo
+{
+    fn connect_info(stream: axum::serve::IncomingStream<'_, TlsApiListener>) -> Self {
+        Self(*stream.remote_addr())
     }
 }
 

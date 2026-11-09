@@ -1254,6 +1254,10 @@ mod websocket_e2e {
 
         let app = axum::Router::new()
             .route("/ws/rooms/{roomId}", axum::routing::get(websocket_handler))
+            .route(
+                "/api/public/server-info",
+                axum::routing::get(synctv_api::get_server_info),
+            )
             .with_state(state);
 
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
@@ -1464,7 +1468,9 @@ mod websocket_e2e {
     ) -> ServerMessage {
         tokio::time::timeout(timeout, async {
             loop {
-                let msg = recv_server_message(ws).await.expect("stream ended");
+                let msg = recv_server_message(ws)
+                    .await
+                    .unwrap_or_else(|| panic!("stream ended while waiting for {label}"));
                 if predicate(&msg) {
                     return msg;
                 }
@@ -1745,6 +1751,95 @@ mod websocket_e2e {
         }
 
         ws.close(None).await.expect("close");
+    }
+
+    #[tokio::test]
+    #[ignore = "Requires Docker"]
+    async fn test_ws_frame_header_over_budget_rejected_at_header_parse() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let infra = TestInfra::new().await;
+        let server = setup_e2e_server(&infra).await;
+
+        let (user_id, token) =
+            register_test_user(&server.user_service, &server.jwt_service, "carol_frame").await;
+        let room_id = create_test_room(&server.room_service, &user_id, "Frame Budget Room").await;
+
+        let mut ws = ws_connect(&server.addr, &room_id, &token).await;
+        drain_until_quiet(&mut ws, 2000).await;
+
+        // Raw 14-byte masked binary frame header declaring a 16,777,216-byte
+        // payload and no payload: FIN=1, opcode=0x02, MASK=1, 64-bit length.
+        // With max_frame_size(64 KiB) the server must reject it at header
+        // parse - before reserving the declared length - and close the
+        // connection; before the fix the server parked holding a 16 MiB
+        // reservation until the idle-timeout sweep.
+        let header: [u8; 14] = [
+            0x82, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xAA, 0xBB, 0xCC, 0xDD,
+        ];
+        {
+            let io = ws.get_mut();
+            let tcp = match io {
+                tokio_tungstenite::MaybeTlsStream::Plain(tcp) => tcp,
+                other => panic!("test expects a plain TCP stream, got {other:?}"),
+            };
+            tcp.write_all(&header).await.expect("send raw frame header");
+        }
+
+        // The server must react by closing the connection - EOF or a
+        // close-family control frame - well inside the idle-timeout window.
+        {
+            let io = ws.get_mut();
+            let tcp = match io {
+                tokio_tungstenite::MaybeTlsStream::Plain(tcp) => tcp,
+                other => panic!("test expects a plain TCP stream, got {other:?}"),
+            };
+            let mut buf = [0u8; 512];
+            // Resolves as soon as the server closes; the outer timeout
+            // turns silence into failure.
+            tokio::time::timeout(std::time::Duration::from_secs(10), async {
+                loop {
+                    let read = tcp.read(&mut buf).await.expect("tcp read");
+                    if read == 0 || buf[..read].iter().any(|byte| *byte & 0xF0 == 0x80) {
+                        break;
+                    }
+                }
+            })
+            .await
+            .expect("server must reject the oversized frame declaration by closing the connection");
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "Requires Docker"]
+    async fn test_ws_oversized_message_rejected_after_upgrade() {
+        // A frame declaring 65,537 bytes (over the 64 KiB message budget but
+        // under the fixed frame cap) is buffered and then rejected by the
+        // message-size check: the connection must close instead of
+        // accepting the payload as a message.
+        let infra = TestInfra::new().await;
+        let server = setup_e2e_server(&infra).await;
+
+        let (user_id, token) =
+            register_test_user(&server.user_service, &server.jwt_service, "dave_frame").await;
+        let room_id = create_test_room(&server.room_service, &user_id, "Message Budget Room").await;
+
+        let mut ws = ws_connect(&server.addr, &room_id, &token).await;
+        drain_until_quiet(&mut ws, 2000).await;
+
+        let oversized = vec![0u8; 65_537];
+        ws.send(tungstenite::Message::Binary(oversized.into()))
+            .await
+            .expect("send oversized frame");
+
+        tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            use futures::StreamExt;
+            // Any error or stream end means the server closed the session;
+            // valid frames keep arriving until then.
+            while let Some(Ok(_)) = ws.next().await {}
+        })
+        .await
+        .expect("server must close the oversized-message session in time");
     }
 
     #[tokio::test]

@@ -3,9 +3,9 @@ schema-version = 1
 [source]
 kind = "git"
 repository = "https://github.com/synctv-org/synctv-app.git"
-revision = "a8d7c287d06ff1d7b753730c2dcbee5d2ed5e8e3"
-commit = "a8d7c287d06ff1d7b753730c2dcbee5d2ed5e8e3"
+revision = "d2a51cf77ec1e44052f519f9cd22dd8590fa9254"
+commit = "d2a51cf77ec1e44052f519f9cd22dd8590fa9254"
 
 [build]
 flutter = "flutter"
-arguments = ["--release", "--no-web-resources-cdn", "--no-wasm-dry-run"]
+arguments = ["--release", "--no-web-resources-cdn", "--wasm", "--no-wasm-dry-run"]
