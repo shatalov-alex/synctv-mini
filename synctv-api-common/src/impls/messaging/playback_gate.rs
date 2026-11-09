@@ -19,6 +19,8 @@ const REPORT_STALE_AFTER: Duration = Duration::from_secs(10);
 const MAX_WAIT_FOR_DEVICE: Duration = Duration::from_secs(45);
 /// During a hold, a change of the room this small is a pause; a bigger one is a seek.
 const SEEK_DISTANCE_SECS: f64 = 1.0;
+/// A hold rewinds the room by at most this much, so a report cannot drag it far back.
+const MAX_HOLD_REWIND_SECS: f64 = 30.0;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeviceReport {
@@ -113,6 +115,7 @@ impl RoomGate {
             .filter_map(|device| device.report.position)
             .filter(|position| position.is_finite() && *position >= 0.0)
             .fold(view.position, f64::min)
+            .max(view.position - MAX_HOLD_REWIND_SECS)
     }
 }
 
@@ -309,6 +312,16 @@ mod tests {
         gate.report(&room(), "tv", report(false, Some(10.0), 4), now);
         let decision = gate.decide(&room(), &view(true, 300.0, 5), now);
         assert_eq!(decision.action, Some(GateAction::Hold { position: 300.0 }));
+    }
+
+    #[test]
+    fn a_hold_rewinds_the_room_only_a_little() {
+        let gate = PlaybackGate::new();
+        let now = Instant::now();
+        // A report far behind the room cannot pull everyone back to it.
+        gate.report(&room(), "tv", report(false, Some(5.0), 5), now);
+        let decision = gate.decide(&room(), &view(true, 600.0, 5), now);
+        assert_eq!(decision.action, Some(GateAction::Hold { position: 570.0 }));
     }
 
     #[test]

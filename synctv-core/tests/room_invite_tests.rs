@@ -216,3 +216,47 @@ async fn telegram_users_are_found_again_by_id() {
     assert_eq!(again.id, creator.id);
     assert_eq!(again.username, "tg_1");
 }
+
+#[tokio::test]
+#[ignore = "Requires Docker-backed PostgreSQL"]
+async fn a_kicked_guest_cannot_return_on_an_older_link() {
+    let (_container, users, rooms, creator, room) = Box::pin(setup()).await;
+    // Unlimited uses: the link would otherwise let anyone in again.
+    let (old_invite, _token) = rooms
+        .create_room_invite(room.id, creator.id, None, None)
+        .await
+        .checked("creator should create an invite");
+    let guest = users
+        .find_or_create_telegram_user(&telegram_user(2, "Olena"))
+        .await
+        .checked("guest should be created");
+    assert!(rooms
+        .admit_invited_member(&old_invite, guest.id, "Olena".to_string())
+        .await
+        .checked("guest should be admitted"));
+
+    rooms
+        .kick_member(room.id, creator.id, guest.id, 1)
+        .await
+        .checked("creator should kick the guest");
+    // Past the one-second cooldown the lite client uses.
+    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+
+    let error = rooms
+        .admit_invited_member(&old_invite, guest.id, "Olena".to_string())
+        .await
+        .expect_err("a link from before the kick must not readmit the guest");
+    assert!(
+        error.to_string().contains("removed from this room"),
+        "{error}"
+    );
+
+    let (new_invite, _token) = rooms
+        .create_room_invite(room.id, creator.id, None, Some(1))
+        .await
+        .checked("creator should create a new invite");
+    assert!(rooms
+        .admit_invited_member(&new_invite, guest.id, "Olena".to_string())
+        .await
+        .checked("a link sent after the kick lets the guest back in"));
+}
