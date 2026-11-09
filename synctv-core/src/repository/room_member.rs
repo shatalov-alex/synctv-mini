@@ -2202,6 +2202,34 @@ impl RoomMemberRepository {
         Ok(exists)
     }
 
+    /// Whether `user_id` was kicked from `room_id` at or after `since`. Kicks are kept after
+    /// their cooldown ends, so this also covers kicks whose cooldown is over.
+    pub async fn was_kicked_since(
+        &self,
+        room_id: &RoomId,
+        user_id: &UserId,
+        since: chrono::DateTime<chrono::Utc>,
+    ) -> Result<bool> {
+        let exists = sqlx::query_scalar!(
+            r#"
+            SELECT EXISTS(
+                SELECT 1
+                FROM room_member_kick_cooldowns
+                WHERE room_id = $1
+                  AND user_id = $2
+                  AND starts_at >= $3
+            ) as "exists!"
+            "#,
+            room_id as &RoomId,
+            user_id as &UserId,
+            since,
+        )
+        .fetch_one(self.pools.primary())
+        .await?;
+
+        Ok(exists)
+    }
+
     pub async fn add_kick_cooldown_with_executor<'e, E>(
         &self,
         insert: KickCooldownInsert<'_>,

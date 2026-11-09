@@ -145,6 +145,17 @@ impl RoomService {
         {
             return Ok(false);
         }
+        // Someone kicked from the room cannot come back on a link sent before the kick;
+        // a link created after it still works, so the room can let them back on purpose.
+        if self
+            .member_repo
+            .was_kicked_since(&invite.room_id, &target_user_id, invite.created_at)
+            .await?
+        {
+            return Err(Error::Authorization(
+                "You were removed from this room. Ask for a new invite link".to_string(),
+            ));
+        }
         let invites = self.invites();
         if !invites.consume(invite.id).await? {
             return Err(Error::Authorization(
