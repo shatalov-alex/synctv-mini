@@ -29,4 +29,3 @@ synctv-web-ui/dist/*
 AGENTS.md
 
 # VPS bundle: contains live secrets
-deploy/vps/out/
