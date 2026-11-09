@@ -44,13 +44,12 @@ services:
     environment:
       # Keep application runtime data on the named volume.
       SYNCTV_DATA_DIR: /data
+    # Reachable from this machine only: the Cloudflare tunnel runs here and is
+    # the only way in. Anything that can reach the port directly can claim any
+    # client IP through X-Forwarded-For (the host gateway is a trusted proxy).
     ports:
-      - "8080:8080"
-      # HTTPS + HTTP/3 (QUIC) when enabled via SYNCTV_SERVER_TLS_*/QUIC_*
-      # env vars; the h3 UDP port defaults to the TLS port.
-      # - "8443:8443"
-      # - "8443:8443/udp"
-      - "1935:1935"
+      - "127.0.0.1:8080:8080"
+      - "[::1]:8080:8080"
     depends_on:
       postgres:
         condition: service_healthy
