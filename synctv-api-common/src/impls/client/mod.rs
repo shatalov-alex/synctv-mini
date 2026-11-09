@@ -22,7 +22,7 @@ pub mod live_danmaku;
 pub mod media;
 mod member;
 pub mod passkey;
-mod playback;
+pub mod playback;
 pub mod playback_lifecycle;
 pub mod playlist;
 mod report;
