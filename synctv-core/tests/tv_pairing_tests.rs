@@ -395,7 +395,12 @@ async fn wrong_codes_lock_the_claimer_out() {
 #[ignore = "Requires Docker-backed PostgreSQL"]
 async fn the_tvs_subtitle_choice_is_open_to_whoever_controls_playback() {
     let f = Box::pin(setup()).await;
-    let current = || async { f.rooms.get_room_settings(&f.room.id).await.checked("settings") };
+    let current = || async {
+        f.rooms
+            .get_room_settings(&f.room.id)
+            .await
+            .checked("settings")
+    };
     let english = TvSubtitles {
         enabled: true,
         track: "en|English".to_string(),
@@ -473,4 +478,115 @@ async fn the_tvs_subtitle_choice_is_open_to_whoever_controls_playback() {
         Err(Error::Authorization(_))
     ));
     assert_eq!(current().await.tv_subtitles, english);
+}
+
+/// Pair a fresh TV to the fixture's room, claimed by `claimer`. Returns the TV's user id.
+async fn pair_tv(f: &Fixture, claimer: synctv_core::models::UserId) -> synctv_core::models::UserId {
+    let start = f.rooms.start_tv_pairing().await.checked("start");
+    let tv_user_id = f
+        .rooms
+        .claim_tv_pairing_with_control(&start.code, f.room.id, claimer, None, None)
+        .await
+        .checked("claim");
+    complete(poll(&f.rooms, &start).await);
+    tv_user_id
+}
+
+#[tokio::test]
+#[ignore = "Requires Docker-backed PostgreSQL"]
+async fn a_tv_cannot_pair_other_tvs() {
+    let f = Box::pin(setup()).await;
+    let tv = pair_tv(&f, f.creator.id).await;
+
+    let start = f.rooms.start_tv_pairing().await.checked("start");
+    assert!(matches!(
+        f.rooms
+            .claim_tv_pairing_with_control(&start.code, f.room.id, tv, None, None)
+            .await,
+        Err(Error::Authorization(_))
+    ));
+    assert!(matches!(
+        poll(&f.rooms, &start).await,
+        TvPairingPoll::Pending
+    ));
+}
+
+#[tokio::test]
+#[ignore = "Requires Docker-backed PostgreSQL"]
+async fn a_room_holds_a_limited_number_of_tvs() {
+    let f = Box::pin(setup()).await;
+    for _ in 0..synctv_core::service::MAX_TVS_PER_ROOM {
+        pair_tv(&f, f.creator.id).await;
+    }
+    let start = f.rooms.start_tv_pairing().await.checked("start");
+    assert!(matches!(
+        f.rooms
+            .claim_tv_pairing_with_control(&start.code, f.room.id, f.creator.id, None, None)
+            .await,
+        Err(Error::Authorization(_))
+    ));
+}
+
+#[tokio::test]
+#[ignore = "Requires Docker-backed PostgreSQL"]
+async fn the_tvs_a_member_paired_are_revoked_with_them() {
+    let f = Box::pin(setup()).await;
+    let guest = f
+        .users
+        .find_or_create_telegram_user(&telegram_user(2, "Olena"))
+        .await
+        .checked("guest");
+    let (invite, _token) = f
+        .rooms
+        .create_room_invite(f.room.id, f.creator.id, None, Some(1))
+        .await
+        .checked("invite");
+    f.rooms
+        .admit_invited_member(&invite, guest.id, "Olena".to_string())
+        .await
+        .checked("guest admitted");
+    let guest_tv = pair_tv(&f, guest.id).await;
+    let creator_tv = pair_tv(&f, f.creator.id).await;
+
+    let revoked = f
+        .rooms
+        .revoke_tvs_paired_by(f.room.id, guest.id)
+        .await
+        .checked("revoke");
+    assert_eq!(revoked, vec![guest_tv]);
+    let left: Vec<_> = f
+        .rooms
+        .list_tv_devices(f.room.id, f.creator.id)
+        .await
+        .checked("list")
+        .into_iter()
+        .map(|tv| tv.user_id)
+        .collect();
+    assert_eq!(left, vec![creator_tv], "the creator's TV stays");
+    assert!(f
+        .rooms
+        .revoke_tvs_paired_by(f.room.id, guest.id)
+        .await
+        .checked("again")
+        .is_empty());
+}
+
+#[tokio::test]
+#[ignore = "Requires Docker-backed PostgreSQL"]
+async fn plain_users_cannot_create_rooms_when_the_server_forbids_it() {
+    let f = Box::pin(setup()).await;
+    let rooms = create_test_room_service(f.pool.clone()).with_users_can_create_rooms(false);
+    let result = rooms
+        .create_room(
+            "Guest's own room".to_string(),
+            String::new(),
+            f.creator.id,
+            None,
+            None,
+        )
+        .await;
+    assert!(
+        matches!(result, Err(Error::Authorization(ref message)) if message.contains("Only admins")),
+        "{result:?}"
+    );
 }

@@ -1485,6 +1485,23 @@ impl Default for MediaConfig {
     }
 }
 
+/// Who may create rooms.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RoomsConfig {
+    /// Let plain user accounts create rooms. Off: only admins can, so invited guests and
+    /// paired TVs stay inside the rooms they were let into.
+    pub users_can_create: bool,
+}
+
+impl Default for RoomsConfig {
+    fn default() -> Self {
+        Self {
+            users_can_create: false,
+        }
+    }
+}
+
 /// Service API key for another app on the internal network. Disabled while `key` is empty.
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -1897,6 +1914,7 @@ pub struct AppConfig {
     pub telegram: TelegramConfig,
     pub service_api: ServiceApiConfig,
     pub media: MediaConfig,
+    pub rooms: RoomsConfig,
     pub cluster: ClusterChannelConfig,
     pub password_complexity: PasswordComplexityConfig,
     pub buffer_sizes: BufferSizesConfig,
@@ -1967,6 +1985,7 @@ impl Default for AppConfig {
             telegram: TelegramConfig::default(),
             service_api: ServiceApiConfig::default(),
             media: MediaConfig::default(),
+            rooms: RoomsConfig::default(),
             cluster: ClusterChannelConfig::default(),
             password_complexity: PasswordComplexityConfig::default(),
             buffer_sizes: BufferSizesConfig::default(),

@@ -15,7 +15,8 @@ what every active room is playing, without a Telegram sign-in or an expiring JWT
 
 ## Setup
 
-Generate a key (it must start with `stk_` and be at least 36 characters):
+Generate a key (it must start with `stk_`, be at least 36 characters, and not be a
+placeholder with only a few different characters):
 
 ```sh
 echo "stk_$(openssl rand -hex 32)"
@@ -51,8 +52,9 @@ or warns that `service_api.act_as` does not resolve.
 
 A keyed request is refused with **403** when
 
-- it carries a `Cf-Ray` or `Cf-Connecting-Ip` header, i.e. it came through the
-  Cloudflare tunnel, or
+- it carries a header a proxy adds (`Cf-Ray`, `Cf-Connecting-Ip`,
+  `X-Forwarded-For`, `X-Real-IP` or `Forwarded`), i.e. it came through the
+  Cloudflare tunnel or a reverse proxy such as nginx or Caddy, or
 - the TCP peer address (the socket, not `X-Forwarded-For` or other headers) is
   outside `service_api.allowed_networks`.
 

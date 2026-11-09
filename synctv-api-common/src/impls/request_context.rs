@@ -165,9 +165,9 @@ pub struct RequestMetadata {
     /// resolved client IP is unavailable) so that unauthenticated requests do
     /// not all collapse into a single shared `anon:unknown` bucket.
     pub socket_ip: Option<IpAddr>,
-    /// The request carries Cloudflare tunnel headers (`Cf-Ray` / `Cf-Connecting-Ip`), so it
-    /// reached the server from the internet even though the socket peer is local.
-    pub via_cloudflare_tunnel: bool,
+    /// The request carries proxy headers (Cloudflare's, `X-Forwarded-For`, `X-Real-IP` or
+    /// `Forwarded`), so it may come from the internet even though the socket peer is local.
+    pub via_proxy: bool,
     pub user_agent: Option<String>,
     pub endpoint_scope: Option<EndpointRateLimitScope>,
     /// Optional request budget extracted from the transport layer.
@@ -186,7 +186,7 @@ impl RequestMetadata {
             authorization: None,
             client_ip: None,
             socket_ip: None,
-            via_cloudflare_tunnel: false,
+            via_proxy: false,
             user_agent: None,
             endpoint_scope: None,
             timeout: None,
@@ -212,8 +212,8 @@ impl RequestMetadata {
     }
 
     #[must_use]
-    pub const fn with_via_cloudflare_tunnel(mut self, via_cloudflare_tunnel: bool) -> Self {
-        self.via_cloudflare_tunnel = via_cloudflare_tunnel;
+    pub const fn with_via_proxy(mut self, via_proxy: bool) -> Self {
+        self.via_proxy = via_proxy;
         self
     }
 
@@ -448,10 +448,7 @@ impl RequestExecutor {
         let internal_peer = metadata
             .socket_ip
             .is_some_and(|peer_ip| settings.peer_allowed(peer_ip));
-        if metadata.transport != TransportProtocol::Http
-            || metadata.via_cloudflare_tunnel
-            || !internal_peer
-        {
+        if metadata.transport != TransportProtocol::Http || metadata.via_proxy || !internal_peer {
             return Err(ApiError::Authorization(
                 "Service API key is only accepted from the internal network".to_string(),
             ));

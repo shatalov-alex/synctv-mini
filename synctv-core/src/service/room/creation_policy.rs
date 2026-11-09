@@ -20,10 +20,13 @@ const ROOM_NAME_POLICY_LOCK_NS: i32 = 20_260_420;
 const ROOM_OWNER_POLICY_LOCK_NS: i32 = 20_260_421;
 
 impl RoomService {
+    /// `self_service`: the user is creating the room for themselves, so the server's rule on
+    /// who may create rooms applies. An admin creating a room for someone skips that rule.
     pub(super) async fn ensure_user_can_create_room_now_tx(
         &self,
         tx: &mut Transaction<'_, Postgres>,
         user_id: &UserId,
+        self_service: bool,
     ) -> Result<()> {
         let user = self
             .user_service
@@ -37,6 +40,11 @@ impl RoomService {
                 "User cannot create rooms while account status is {}",
                 user.status
             )));
+        }
+        if self_service && !user.can_create_room(self.users_can_create_rooms) {
+            return Err(Error::Authorization(
+                "Only admins can create rooms on this server".to_string(),
+            ));
         }
 
         Ok(())

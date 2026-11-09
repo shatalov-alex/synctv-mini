@@ -31,6 +31,8 @@ const TV_PAIRING_CODE_ATTEMPTS: usize = 8;
 /// A revoked TV may not rejoin the room through any other path for this long.
 pub const TV_REVOKE_KICK_COOLDOWN_SECS: i64 = super::MAX_KICK_COOLDOWN_SECONDS;
 const TV_MEMBER_DISPLAY_NAME: &str = "TV";
+/// Live TVs a room may have at once.
+pub const MAX_TVS_PER_ROOM: usize = 10;
 
 #[must_use]
 pub fn tv_pairing_secret_hash(secret: &str) -> Vec<u8> {
@@ -145,7 +147,8 @@ impl RoomService {
     }
 
     /// Claim a pairing code for `room_id`. The claimer must be the room creator or hold
-    /// `CONTROL_PLAYBACK_STATE` there. Wrong or expired codes count as brute-force failures
+    /// `CONTROL_PLAYBACK_STATE` there, and not be a TV itself; the room may have at most
+    /// [`MAX_TVS_PER_ROOM`] live TVs. Wrong or expired codes count as brute-force failures
     /// for the claimer and the IP. Returns the new TV user.
     pub async fn claim_tv_pairing_with_control(
         &self,
@@ -177,6 +180,23 @@ impl RoomService {
                 ),
                 other => other,
             })?;
+        }
+
+        if self.tv_devices().is_tv_user(&claimer_id).await? {
+            return Err(Error::Authorization(
+                "A TV cannot pair other TVs".to_string(),
+            ));
+        }
+        if self
+            .tv_devices()
+            .list_active_for_room(&room_id)
+            .await?
+            .len()
+            >= MAX_TVS_PER_ROOM
+        {
+            return Err(Error::Authorization(format!(
+                "This room already has {MAX_TVS_PER_ROOM} TVs: unpair one first"
+            )));
         }
 
         let pairings = self.tv_pairings();
@@ -297,6 +317,19 @@ impl RoomService {
             ));
         }
         Ok(tvs)
+    }
+
+    /// Revoke the credentials of the TVs `member_id` paired in the room, when that member is
+    /// removed from it: a TV must not outlast the person who let it in. Returns the TVs,
+    /// which the caller still has to kick.
+    pub async fn revoke_tvs_paired_by(
+        &self,
+        room_id: RoomId,
+        member_id: UserId,
+    ) -> Result<Vec<UserId>> {
+        self.tv_devices()
+            .revoke_paired_by(&room_id, &member_id)
+            .await
     }
 
     /// Revoke a paired TV's credentials (room creator only): its refresh tokens stop working.

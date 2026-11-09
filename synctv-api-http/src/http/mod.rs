@@ -24,9 +24,9 @@ pub(crate) mod public;
 pub(crate) mod room;
 pub(crate) mod room_extra;
 pub(crate) mod room_invites;
+pub(crate) mod room_viewers;
 pub(crate) mod service;
 pub(crate) mod ticket;
-pub(crate) mod room_viewers;
 pub(crate) mod tv_pairing;
 pub(crate) mod user;
 pub(crate) mod validation;
@@ -62,10 +62,10 @@ pub use health::{create_health_router, create_metrics_router, liveness_check};
 pub use middleware::{hsts_header, security_headers_middleware};
 pub use websocket::{websocket_handler, AuthMethod};
 
-/// The request was forwarded by the Cloudflare tunnel (it carries `Cf-Ray` or
-/// `Cf-Connecting-Ip`), whatever the socket peer looks like.
-pub(crate) fn carries_cloudflare_tunnel_headers(headers: &HeaderMap) -> bool {
-    synctv_api_common::service_api::CLOUDFLARE_TUNNEL_HEADERS
+/// The request was forwarded by a proxy (the Cloudflare tunnel, or one that sets
+/// `X-Forwarded-For`, `X-Real-IP` or `Forwarded`), whatever the socket peer looks like.
+pub(crate) fn carries_proxy_headers(headers: &HeaderMap) -> bool {
+    synctv_api_common::service_api::PROXIED_REQUEST_HEADERS
         .iter()
         .any(|name| headers.contains_key(*name))
 }

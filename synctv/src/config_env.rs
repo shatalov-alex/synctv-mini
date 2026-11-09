@@ -699,6 +699,11 @@ pub(crate) fn apply_env_overrides_with(
         &mut config.media.direct_url_default_proxy_mode,
     );
 
+    env_override_bool(
+        "SYNCTV_ROOMS_USERS_CAN_CREATE",
+        &mut config.rooms.users_can_create,
+    )?;
+
     env_override_str("SYNCTV_JWT_SECRET", &mut config.jwt.secret);
     env_override_str_file(
         "SYNCTV_JWT_SECRET_FILE",

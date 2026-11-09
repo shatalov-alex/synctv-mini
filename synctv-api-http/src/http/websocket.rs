@@ -200,7 +200,7 @@ fn websocket_request_metadata(
         .with_authorization(authorization)
         .with_client_ip(client_ip)
         .with_socket_ip(direct_peer_ip)
-        .with_via_cloudflare_tunnel(super::carries_cloudflare_tunnel_headers(headers))
+        .with_via_proxy(super::carries_proxy_headers(headers))
         .with_user_agent(user_agent)
         .with_endpoint_scope(Some(EndpointRateLimitScope::Realtime))
         .with_timeout(Some(WEBSOCKET_HANDSHAKE_TIMEOUT)))

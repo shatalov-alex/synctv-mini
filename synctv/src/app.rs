@@ -1174,6 +1174,7 @@ impl Application {
                 realtime_outbox: runtime_plan.core_realtime_outbox(),
                 read_pool: Some(infra.database_pools.read_pool()),
                 room_admission_notifier: Self::telegram_admin_notifier(&infra.config)?,
+                users_can_create_rooms: infra.config.rooms.users_can_create,
             },
         )
         .await?;
@@ -2220,6 +2221,7 @@ mod tests {
             telegram: crate::app_config::TelegramConfig::default(),
             service_api: crate::app_config::ServiceApiConfig::default(),
             media: crate::app_config::MediaConfig::default(),
+            rooms: crate::app_config::RoomsConfig::default(),
             cluster: ClusterChannelConfig::default(),
             password_complexity: PasswordComplexityConfig::default(),
             buffer_sizes: BufferSizesConfig::default(),
