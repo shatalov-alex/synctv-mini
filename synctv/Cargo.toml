@@ -11,7 +11,10 @@ path = "src/main.rs"
 
 [features]
 # OpenAPI is opt-in through the `openapi` feature below.
-default = ["tls-aws-lc", "tls-webpki-roots"]
+default = ["tls-aws-lc", "tls-webpki-roots", "grpc"]
+# The gRPC API and the cluster server (multi-node). Off: REST and WebSocket only, so a
+# single-node build skips compiling synctv-api-grpc.
+grpc = ["synctv-api/grpc"]
 web-ui = ["synctv-api/web-ui"]
 web-ui-dynamic = ["synctv-api/web-ui-dynamic"]
 # Enable Kubernetes support (K8s DNS discovery, K8s Lease leader election).

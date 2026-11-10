@@ -809,6 +809,7 @@ pub(crate) fn apply_env_overrides_with(
     apply_logging_env("SYNCTV_METRICS_LOGGING", &mut config.metrics.logging)?;
     apply_logging_env("SYNCTV_CLUSTER_LOGGING", &mut config.cluster.logging)?;
     apply_logging_env("SYNCTV_MANAGEMENT_LOGGING", &mut config.management.logging)?;
+    env_override_bool("SYNCTV_LIVESTREAM_ENABLED", &mut config.livestream.enabled)?;
     apply_logging_env("SYNCTV_LIVESTREAM_LOGGING", &mut config.livestream.logging)?;
     apply_logging_env("SYNCTV_WEBRTC_LOGGING", &mut config.webrtc.logging)?;
 

@@ -122,6 +122,7 @@ pub struct Services {
     pub jwt_service: synctv_core::service::JwtService,
     pub realtime_fanout_service: Arc<dyn RealtimeFanoutService>,
     pub rate_limiter: Arc<dyn synctv_core::service::RequestRateLimiterService>,
+    #[cfg_attr(not(feature = "grpc"), allow(dead_code))] // read by the gRPC router only
     pub rate_limit_config: synctv_core::service::RateLimitConfig,
     pub content_filter: synctv_core::service::ContentFilter,
     pub realtime_connection_service: Arc<dyn ConnectionRuntime>,
@@ -2470,6 +2471,7 @@ impl SyncTvServer {
         self.shutdown_components(deadline).await;
     }
 
+    #[cfg(feature = "grpc")]
     async fn build_grpc_router(
         &self,
         config: &synctv_api::ApiRuntimeSettings,
@@ -2670,6 +2672,23 @@ impl SyncTvServer {
             expose_cluster_services,
         })
         .await
+    }
+
+    /// Built without the `grpc` feature: no gRPC API, and no cluster server.
+    #[cfg(not(feature = "grpc"))]
+    #[allow(clippy::unused_async, clippy::unused_async_trait_impl)] // same signature as the gRPC build
+    async fn build_grpc_router(
+        &self,
+        _config: &synctv_api::ApiRuntimeSettings,
+        _shutdown_rx: watch::Receiver<bool>,
+        _shared_http_app_state: Arc<synctv_api::AppState>,
+        _shared_provider_runtime: &SharedProviderPlaybackRuntime,
+        expose_cluster_services: bool,
+    ) -> anyhow::Result<axum::Router> {
+        if expose_cluster_services {
+            anyhow::bail!("Clustering needs a build with the `grpc` feature");
+        }
+        Ok(axum::Router::new())
     }
 
     async fn build_shared_http_runtime(

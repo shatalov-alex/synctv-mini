@@ -99,6 +99,10 @@ pub async fn init_livestream(
     Option<Arc<synctv_livestream::LiveStreamingInfrastructure>>,
     Vec<tokio::task::JoinHandle<()>>,
 )> {
+    if !config.livestream.enabled {
+        info!("Live streaming is disabled (livestream.enabled = false)");
+        return Ok((None, None, Vec::new()));
+    }
     info!("Initializing livestream infrastructure...");
 
     let LivestreamInitOptions {

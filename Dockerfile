@@ -115,11 +115,14 @@ LABEL org.opencontainers.image.title="SyncTV" \
 
 # Install runtime dependencies (curl needed for healthcheck; ffmpeg is
 # spawned as a subprocess by the live transcode quality rungs — the Debian
-# build ships the libx264 and aac encoders they require)
+# build ships the libx264 and aac encoders they require). Set
+# SYNCTV_RUNTIME_FFMPEG=false to leave it out when live streaming is off.
+ARG SYNCTV_RUNTIME_FFMPEG=true
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
-    ffmpeg && rm -rf /var/lib/apt/lists/*
+    $(if [ "$SYNCTV_RUNTIME_FFMPEG" = "true" ]; then echo ffmpeg; fi) \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create synctv for running the application
 RUN useradd -m -u 1000 synctv
