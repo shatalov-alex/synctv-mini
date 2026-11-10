@@ -177,9 +177,15 @@ impl StreamMessageHandler {
         })
     }
 
-    pub(super) async fn leave_playback_gate(&self) {
+    /// Forgets this connection in the gate. In memory only, so cleanup can do it first.
+    pub(super) fn forget_playback_gate(&self) {
         self.playback_gate
             .remove(&self.room_id, self.connection_id.as_str());
+    }
+
+    /// Lets the gate resume a room it held only for this connection. Cleanup calls it after
+    /// the connection is unregistered, so the state lookup never delays unregistering.
+    pub(super) async fn reevaluate_playback_gate_after_leave(&self) {
         self.evaluate_playback_gate().await;
     }
 
