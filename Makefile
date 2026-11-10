@@ -450,3 +450,28 @@ dev-open: ## Open common local service URLs on macOS.
 
 dev-smoke: ## Run real CLI/curl smoke tests against the local dev stack.
 	scripts/dev-e2e-smoke.sh
+
+# Local CI. GitHub runs none; `make release` runs ci-full before publishing.
+.PHONY: ci ci-full lite-client-check
+# Some tests create throwaway git repositories; keep personal git hooks and signing out of them.
+CI_TEST_ENV ?= GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
+lite-client-check: ## Type-check, test and build the lite client (into a temp dir, not lite-client/dist).
+	cd lite-client && pnpm install --frozen-lockfile && pnpm typecheck && pnpm test
+	cd lite-client && out=$$(mktemp -d) && pnpm exec vite build --outDir "$$out" --emptyOutDir && rm -rf "$$out"
+
+ci: ## Run the checks CI used to run: format, lint, SQLx, proto, dependencies, tests, client.
+	$(MAKE) fmt-check
+	$(MAKE) clippy-check
+	$(MAKE) check-all-targets
+	$(MAKE) proto-freshness
+	$(MAKE) deny-check
+	$(CI_TEST_ENV) SQLX_OFFLINE=true $(CARGO) test $(CARGO_WORKSPACE_BUILD_ARGS)
+	$(MAKE) lite-client-check
+
+ci-full: ci ## Everything in ci, plus the ignored tests that start PostgreSQL in Docker.
+	$(CI_TEST_ENV) SQLX_OFFLINE=true $(CARGO) test $(CARGO_WORKSPACE_BUILD_ARGS) -- --ignored
+
+.PHONY: release
+release: ## Publish a release: make release VERSION=x.y.z (runs ci-full, tags, pushes, creates the GitHub release).
+	@test -n "$(VERSION)" || { echo "usage: make release VERSION=x.y.z"; exit 2; }
+	scripts/release.sh "$(VERSION)"
