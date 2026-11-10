@@ -1513,6 +1513,11 @@ pub struct TelegramConfig {
     pub bot_polling_enabled: bool,
     /// Bot API base URL (override for a local Bot API server or tests).
     pub api_base_url: String,
+    /// Bot username for the Mini App links the client builds (invites, TV pairing). Empty =
+    /// ask Telegram with the bot token.
+    pub bot_username: String,
+    /// Mini App short name, for `t.me/<bot>/<app>` links. Empty = the bot's Main Mini App.
+    pub mini_app_short_name: String,
 }
 
 impl Default for TelegramConfig {
@@ -1526,6 +1531,8 @@ impl Default for TelegramConfig {
             bot_polling_enabled: true,
             api_base_url: synctv_core::service::telegram_bot::DEFAULT_TELEGRAM_API_BASE_URL
                 .to_string(),
+            bot_username: String::new(),
+            mini_app_short_name: String::new(),
         }
     }
 }
@@ -1540,6 +1547,8 @@ impl std::fmt::Debug for TelegramConfig {
             .field("web_app_url", &self.web_app_url)
             .field("bot_polling_enabled", &self.bot_polling_enabled)
             .field("api_base_url", &self.api_base_url)
+            .field("bot_username", &self.bot_username)
+            .field("mini_app_short_name", &self.mini_app_short_name)
             .finish()
     }
 }

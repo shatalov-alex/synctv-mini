@@ -41,10 +41,12 @@ impl ClientApiImpl {
         } else {
             req.max_uses
         };
-        let expires_at = self.clock.now() + chrono::Duration::seconds(ttl_secs);
+        let expires_at =
+            (!req.no_expiry).then(|| self.clock.now() + chrono::Duration::seconds(ttl_secs));
+        let max_uses = (!req.unlimited_uses).then_some(max_uses);
         let (invite, token) = self
             .room_service
-            .create_room_invite(rid, *user_id, Some(expires_at), Some(max_uses))
+            .create_room_invite(rid, *user_id, expires_at, max_uses)
             .await
             .map_err(Self::map_room_access_error)?;
         Ok(proto::CreateRoomInviteResponse {

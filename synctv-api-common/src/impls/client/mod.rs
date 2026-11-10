@@ -16,7 +16,7 @@
 mod auth;
 mod invites;
 mod tv_pairing;
-pub use auth::login_outcome_to_proto;
+pub use auth::{login_outcome_to_proto, TelegramMiniApp};
 pub mod file_download;
 pub mod live_danmaku;
 pub mod media;

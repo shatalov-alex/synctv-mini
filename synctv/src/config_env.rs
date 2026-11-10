@@ -715,6 +715,14 @@ pub(crate) fn apply_env_overrides_with(
         "SYNCTV_TELEGRAM_API_BASE_URL",
         &mut config.telegram.api_base_url,
     );
+    env_override_str(
+        "SYNCTV_TELEGRAM_BOT_USERNAME",
+        &mut config.telegram.bot_username,
+    );
+    env_override_str(
+        "SYNCTV_TELEGRAM_MINI_APP_SHORT_NAME",
+        &mut config.telegram.mini_app_short_name,
+    );
 
     env_override_str("SYNCTV_SERVICE_API_KEY", &mut config.service_api.key);
     env_override_str_file(

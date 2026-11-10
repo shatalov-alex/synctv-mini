@@ -5727,6 +5727,10 @@ message CreateRoomInviteRequest {
     gte: 0
     lte: 100
   }];
+  // The link never expires; ttl_seconds is ignored.
+  bool no_expiry = 3;
+  // Any number of people can use the link; max_uses is ignored.
+  bool unlimited_uses = 4;
 }
 
 message CreateRoomInviteResponse {

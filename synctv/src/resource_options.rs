@@ -681,6 +681,15 @@ pub fn api_runtime_settings(config: &AppConfig) -> ApiRuntimeSettings {
             admin_user_id: config.telegram.admin_user_id,
             admin_username: telegram_admin_username(config),
             init_data_max_age_secs: config.telegram.init_data_max_age_secs,
+            api_base_url: config.telegram.api_base_url.clone(),
+            bot_username: config
+                .telegram
+                .bot_username
+                .trim()
+                .trim_start_matches('@')
+                .to_string(),
+            mini_app_short_name: config.telegram.mini_app_short_name.trim().to_string(),
+            resolved_bot_username: std::sync::Arc::default(),
         },
         service_api: service_api_settings(config),
         media: synctv_api::MediaRuntimeSettings {

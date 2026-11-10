@@ -271,6 +271,14 @@ pub struct TelegramAuthSettings {
     pub admin_user_id: i64,
     pub admin_username: String,
     pub init_data_max_age_secs: i64,
+    /// Bot API base URL; empty = the public Bot API.
+    pub api_base_url: String,
+    /// Bot username for Mini App links; empty = ask Telegram (`getMe`) once.
+    pub bot_username: String,
+    /// Mini App short name for `t.me/<bot>/<app>` links; empty = the bot's Main Mini App.
+    pub mini_app_short_name: String,
+    /// The username `getMe` returned, shared by every clone.
+    pub resolved_bot_username: std::sync::Arc<tokio::sync::OnceCell<String>>,
 }
 
 impl std::fmt::Debug for TelegramAuthSettings {
@@ -280,7 +288,9 @@ impl std::fmt::Debug for TelegramAuthSettings {
             .field("admin_user_id", &self.admin_user_id)
             .field("admin_username", &self.admin_username)
             .field("init_data_max_age_secs", &self.init_data_max_age_secs)
-            .finish()
+            .field("bot_username", &self.bot_username)
+            .field("mini_app_short_name", &self.mini_app_short_name)
+            .finish_non_exhaustive()
     }
 }
 

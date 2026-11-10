@@ -11,7 +11,11 @@ const TTL_OPTIONS: Array<[string, number]> = [
   ['24 hours', 86400],
   ['7 days', 7 * 86400],
   ['30 days', 30 * 86400],
+  ['Never expires', 0],
 ];
+
+// 0 = anyone with the link. Someone you remove still cannot come back on it.
+const USES_OPTIONS = [1, 2, 5, 10, 0];
 
 function isLive(invite: RoomInvite, nowMs: number): boolean {
   const exp = toNumber(invite.expiresAt);
@@ -41,7 +45,7 @@ export function InvitePanel({ api, roomId }: { api: ApiClient; roomId: string })
       const res = await createInvite(api, roomId, { ttlSeconds: ttl, maxUses });
       const url = res.token ? inviteLink(res.token) : null;
       if (!url) {
-        setError('Set VITE_TG_BOT_USERNAME and VITE_TG_APP_SHORT_NAME at build time to make invite links.');
+        setError('The server does not know its Telegram bot yet, so it cannot make invite links. Reload and try again.');
       }
       setLink(url || '');
       await reload();
@@ -77,9 +81,9 @@ export function InvitePanel({ api, roomId }: { api: ApiClient; roomId: string })
           ))}
         </select>
         <select value={String(maxUses)} onChange={(e) => setMaxUses(Number((e.target as HTMLSelectElement).value))}>
-          {[1, 2, 5, 10].map((n) => (
+          {USES_OPTIONS.map((n) => (
             <option key={n} value={String(n)}>
-              {n === 1 ? '1 person' : `${n} people`}
+              {n === 0 ? 'Anyone with the link' : n === 1 ? '1 person' : `${n} people`}
             </option>
           ))}
         </select>
