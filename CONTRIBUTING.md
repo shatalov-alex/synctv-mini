@@ -1,115 +1,81 @@
-# Contributing to SyncTV
+# Contributing to SyncTV Mini
 
-## Development Setup
+Thanks for helping. Bug reports, fixes and small focused features are welcome.
 
-SyncTV is a Rust workspace with PostgreSQL, optional Redis, protobuf APIs, deployment templates, and an Astro Starlight documentation site.
+SyncTV Mini aims to stay small: a private setup for an owner, a few guests and a TV. A
+feature that only makes sense for a large public server is likely a better fit for
+[SyncTV](https://github.com/synctv-org/synctv) itself. If you're unsure, open an issue and
+ask before writing the code.
 
-Rust builds require `protoc` on `PATH`. Native media builds also require NASM and libclang. Linux builds link with `lld` (see `.cargo/config.toml`); install the `lld` package.
+## Where a change belongs
 
-Typical local setup:
+- **Telegram Mini App, TV page, invites, the service API, or this fork's settings:** here.
+- **The sync engine, media providers, or other server code this fork hasn't changed:**
+  upstream SyncTV, so every user gets it. This fork merges upstream releases.
 
-```bash
+## Setting up
+
+You need Rust (the version is pinned in `rust-toolchain.toml`), `protoc`, Docker, and
+Node.js 20.19+ with pnpm. Linux builds also need `nasm`, `libclang` and `lld`.
+
+```sh
 docker compose -f docker-compose.dev.yml up -d postgres redis
-cargo +nightly check --workspace --all-targets
-make nextest
+SQLX_OFFLINE=true cargo check --workspace --all-targets
+
+cd lite-client
+pnpm install
+pnpm dev
 ```
 
-Run the service locally:
+## Checks
 
-```bash
-cargo +nightly run -p synctv --bin synctv -- serve
+Run these before you open a pull request. CI runs them too.
+
+Server:
+
+```sh
+cargo fmt --all
+SQLX_OFFLINE=true cargo clippy --workspace --all-targets -- -D warnings
+SQLX_OFFLINE=true cargo test --workspace
+SQLX_OFFLINE=true cargo test --workspace -- --ignored   # needs Docker
 ```
 
-Run with OpenAPI enabled:
+Client:
 
-```bash
-cargo +nightly run -p synctv --features openapi --bin synctv -- serve
+```sh
+cd lite-client
+pnpm typecheck && pnpm test && pnpm build
 ```
 
-## Before Submitting Changes
+`pnpm build` prints the bundle size. Keep it small: the client loads inside Telegram, often
+on a phone.
 
-Use the narrowest relevant test first, then run broader checks before handing off:
+### Database queries
 
-```bash
-cargo +nightly fmt --all
-cargo +nightly clippy --workspace --all-targets
-make nextest
-cargo +nightly test --workspace --doc --locked
-cargo +nightly check --workspace --all-targets --features openapi
+The server checks SQL at compile time against the metadata in `.sqlx/`. If you add or
+change a query or a migration, regenerate it against a migrated database:
+
+```sh
+DATABASE_URL=postgresql://synctv:synctv@127.0.0.1:5432/synctv sqlx migrate run
+DATABASE_URL=postgresql://synctv:synctv@127.0.0.1:5432/synctv \
+  cargo sqlx prepare --workspace -- --all-targets
 ```
 
-If your change touches SQLx queries, migrations, or query result shapes, refresh and verify SQLx metadata according to the project workflow before submitting.
+Commit the changed `.sqlx/` files with your change.
 
-## Documentation
+## Pull requests
 
-The documentation site lives in `docs/`.
+- One change per pull request, with a test where it makes sense.
+- Commit subjects use the form `Area: what changed`, for example
+  `Invites: links that never expire`.
+- Explain what the change does for the user, and how you checked it.
+- Don't commit secrets, `.env.*` files (other than the examples), or your own domain and
+  bot names.
 
-```bash
-cd docs
-npm install
-npm run validate
-```
+## Security problems
 
-Documentation changes should keep Chinese and English pages aligned when a page exists in both locales.
+Don't open a public issue. See [SECURITY.md](SECURITY.md).
 
-Provider work starts with the [Provider Development Guide](docs/src/content/docs/en/develop/provider-development.mdx). Keep the provider's upstream client and DTOs, Core source config and target, public protobuf/API, OpenAPI, management and CLI surfaces, and Flutter App flow aligned. Validate typed parse/preview results, generated playback resources, local and remote execution paths, provider credentials, and page/cursor behavior.
+## License
 
-Provider changes that affect the Flutter App also require its standard checks:
-
-```bash
-dart analyze
-flutter test
-```
-
-Update docs when changing:
-
-- Static configuration fields: update the configuration index, full configuration example, environment variable reference, and the relevant topic page.
-- Runtime settings: update the runtime settings reference.
-- CLI commands: update the CLI reference.
-- HTTP/OpenAPI paths: update OpenAPI and client integration docs if behavior changes.
-- gRPC/protobuf APIs: update gRPC and client integration docs if behavior changes.
-- Authentication, MFA, OAuth2, token, permission, or management behavior: update the security model and relevant runbooks.
-- Docker Compose, Helm, Service, Ingress, metrics, or storage templates: update deployment docs and the production checklist.
-
-## API and Compatibility
-
-This project is still under active design. Do not preserve obsolete paths, protobuf fields, or configuration shapes unless maintainers explicitly require compatibility. Prefer clear current architecture over compatibility shims for old experimental designs.
-
-## Database and Domain Validation
-
-Keep database schema constraints focused on stable storage integrity, not product policy.
-
-Database migrations may enforce long-lived persistence invariants such as primary keys, foreign keys, required storage columns, identity uniqueness, unique indexes, lookup indexes, and data-shape rules that are unlikely to change without a deliberate storage migration. They should not encode business-level validation that changes with product behavior.
-
-Do not put these in SQL `CHECK` constraints, database enum types, or string enum lists:
-
-- Role, status, signup-method, review-state, provider-type, or other business enum value lists.
-- Workflow/state-machine coupling such as "pending means reviewed_at is null" or "rejected requires a reason".
-- Permission assignability rules, runtime settings allowlists, feature policy, rate/limit policy, playback policy, room policy, or moderation policy.
-- Numeric ranges that are product choices rather than physical storage constraints.
-
-Store enum-like fields such as status, role, signup method, message type, and review state as numeric codes (`SMALLINT` is usually enough), and keep the meaning/mapping in Rust domain types. Avoid persisting those values as strings.
-
-Implement volatile business rules in the domain/service layer, keep repository inputs typed where practical, and cover them with focused tests. If direct database writes could create invalid business state, prefer service-only write paths, operational consistency checks, or repair tooling over moving volatile policy into the schema.
-
-`UNIQUE` is allowed when the rule is a stable identity or near-permanent uniqueness invariant and database atomicity is valuable: usernames, emails, provider instance names, OAuth account identities, idempotency keys, and one-active-row-per-stable-scope patterns are typical examples. Do not use `UNIQUE` for product policy that may be relaxed, re-scoped, or reinterpreted during normal feature work. A new project is not an exception: migrations should still avoid business constraints that would make ordinary product changes require database constraint churn.
-
-User-facing labels and display names, such as room names, should be treated as product policy unless they are explicitly defined as stable identifiers. Enforce those rules in services, using transactional locks or other coordination where concurrency matters.
-
-## Security-Sensitive Changes
-
-Treat these areas as high-risk:
-
-- Authentication, token issuance, refresh, logout, MFA, OAuth2, passkeys, and account recovery.
-- Provider credentials, encryption keys, media proxying, Range handling, redirects, and request headers.
-- Management gRPC, role hierarchy, admin operations, runtime settings, and audit logs.
-- Rate limits, brute-force protection, Redis state, and cache invalidation.
-
-Add focused tests for bypass, privilege, stale-token, replay, and concurrency cases when touching these areas.
-
-## Pull Request Hygiene
-
-- Keep changes scoped and explain behavior changes directly.
-- Do not commit generated temporary files, local build output, credentials, or personal environment files.
-- Include migration and rollback notes for database or deployment changes.
-- Include docs updates in the same change when user-visible behavior changes.
+Contributions are released under the [MIT License](LICENSE), like the rest of the project.

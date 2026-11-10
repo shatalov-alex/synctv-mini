@@ -1,5 +1,10 @@
 # SyncTV Mini
 
+[![CI](https://github.com/shatalov-alex/synctv-mini/actions/workflows/ci.yml/badge.svg)](https://github.com/shatalov-alex/synctv-mini/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/shatalov-alex/synctv-mini?label=release)](https://github.com/shatalov-alex/synctv-mini/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Based on SyncTV 1.0.14](https://img.shields.io/badge/based%20on-SyncTV%201.0.14-informational)](https://github.com/synctv-org/synctv/releases/tag/v1.0.14)
+
 Watch videos together, in sync, from a Telegram Mini App, on a server that runs on your
 own computer.
 
@@ -74,7 +79,7 @@ The fork follows upstream releases: v1.0.14 is merged.
 ### 2. Get the code and configure it
 
 ```sh
-git clone https://github.com/<you>/synctv-mini.git
+git clone https://github.com/shatalov-alex/synctv-mini.git
 cd synctv-mini
 cp .env.postgres.example .env.postgres
 cp .env.redis.example .env.redis
@@ -210,6 +215,13 @@ the server reads `lite-client/dist` from disk.
 - Server: Rust (see `rust-toolchain.toml`). Run `cargo test --workspace`. Tests marked
   `#[ignore]` need Docker, because they start their own PostgreSQL.
 - Client: see [lite-client/README.md](lite-client/README.md).
+- `helm/` and `docs/` (except `docs/service-api.md`) are upstream's Kubernetes chart and
+  documentation site. They are kept to make upstream merges easy, but this fork doesn't
+  maintain or test them.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for checks and conventions, and
+[CHANGELOG.md](CHANGELOG.md) for what changed in each release. Report security problems
+privately, as described in [SECURITY.md](SECURITY.md).
 
 ## Credits and license
 

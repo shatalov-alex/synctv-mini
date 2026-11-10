@@ -1,0 +1,58 @@
+name: Bug report
+description: Something doesn't work as described.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. For a security problem, don't use this form: see [SECURITY.md](https://github.com/shatalov-alex/synctv-mini/blob/main/SECURITY.md).
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open a room in the Mini App
+        2. Add a video link
+        3. ...
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where
+      multiple: true
+      options:
+        - Telegram Mini App (phone)
+        - Telegram Desktop
+        - TV page
+        - Server or setup
+        - Service API
+        - Telegram bot
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The release tag or commit you run.
+      placeholder: mini-v1.0.0
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device and browser
+      placeholder: iPhone 15, iOS 26, Telegram 12.1 / Samsung TV browser
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: "`docker compose logs synctv`, or the browser console. Remove tokens, keys and Telegram data first."
+      render: text
