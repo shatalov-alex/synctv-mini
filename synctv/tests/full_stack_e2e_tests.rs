@@ -366,6 +366,8 @@ fn test_config(
     config.server.port = api_port;
     config.server.enable_reflection = false;
     config.metrics.enabled = false;
+    // These tests create rooms as plain users, as upstream SyncTV allows by default.
+    config.rooms.users_can_create = true;
     config.server.advertise_host = "127.0.0.1".to_string();
     config.server.shutdown_drain_timeout_seconds = 3;
     config.health.host = "127.0.0.1".to_string();
