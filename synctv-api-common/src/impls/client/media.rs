@@ -1787,6 +1787,11 @@ impl ClientApiImpl {
         crate::impls::validate_proto_request(&req)?;
         let rid = self.parse_room_id(room_id)?;
         let media_id = crate::impls::proto_validated_media_id(req.media_id, &self.public_id_codec)?;
+        // Someone outside the room is refused, as before.
+        self.room_service
+            .check_membership(&rid, user_id)
+            .await
+            .map_err(ApiError::from)?;
         // The first stored length is permanent, so only the room creator's own players set it:
         // a guest's broken or tampered player must not mislead everyone's timeline.
         if !self
