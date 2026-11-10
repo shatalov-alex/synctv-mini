@@ -1982,9 +1982,14 @@ impl StreamMessageHandler {
 
     /// Cleanup on disconnect
     async fn cleanup(&self, room_id: &str) {
+        self.forget_playback_gate();
+        self.cleanup_connection(room_id).await;
+        self.reevaluate_playback_gate_after_leave().await;
+    }
+
+    async fn cleanup_connection(&self, room_id: &str) {
         self.resource_observer.clear_observations().await;
         self.leave_all_media_swarms().await;
-        self.leave_playback_gate().await;
         let actor = match self.realtime_actor() {
             Ok(actor) => actor,
             Err(error) => {
