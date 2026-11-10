@@ -3,7 +3,7 @@
 A small web client for watching together: a Telegram Mini App for the owner
 and invited guests, plus a `/tv` page for smart-TV browsers.
 
-- Vite + Preact + TypeScript, with no UI kit. About 29 KB of gzipped app JS in
+- Vite + Preact + TypeScript, with no UI kit. About 38 KB of gzipped app JS in
   total; each page loads only the chunks it needs.
 - `<video>` plays files directly. HLS uses the browser's native support when
   available, otherwise `hls.js/light`, which is loaded only when needed
@@ -31,15 +31,14 @@ Launch parameters (Telegram `startapp`):
 
 ## Build-time config (Vite env)
 
+None is needed. At start the client asks the server which bot to link to
+(`GET /api/telegram/mini-app`: `telegram.bot_username`, else the bot's own `getMe`).
+
 | Variable | Purpose |
 |---|---|
-| `VITE_TG_BOT_USERNAME` | Bot username without `@`, for `https://t.me/<bot>/<app>?startapp=…` links |
-| `VITE_TG_APP_SHORT_NAME` | Mini App short name from BotFather |
+| `VITE_TG_BOT_USERNAME` | Fallback bot username without `@`, used only when the server doesn't answer |
+| `VITE_TG_APP_SHORT_NAME` | Fallback Mini App short name |
 | `VITE_API_BASE` | API origin. Leave it empty when the server serves the client (the normal setup). |
-
-```sh
-VITE_TG_BOT_USERNAME=my_synctv_bot VITE_TG_APP_SHORT_NAME=watch pnpm build
-```
 
 ## Development
 
@@ -54,7 +53,7 @@ pnpm vendor:telegram           # refresh public/telegram-web-app.js
 The TV pairing mock gives the TV the claiming phone's own access token. It
 exists only to exercise the UI flow and is never part of a build.
 
-## Serving from the SynCTV server
+## Serving from the SyncTV server
 
 The server serves a web UI from disk when built with the `web-ui` or
 `web-ui-dynamic` cargo feature (`make release` uses `web-ui`) and
@@ -97,7 +96,7 @@ The server's default CSP (`security_headers_middleware`) is
 
 ## Sync
 
-`src/sync/` ports the official SynCTV Flutter client's playback sync:
+`src/sync/` ports the official SyncTV Flutter client's playback sync:
 
 - **Socket.** JSON text frames (`format=json`) over
   `/ws/rooms/{room}?ticket=…`, with a fresh ticket from `POST /api/tickets`
@@ -124,7 +123,8 @@ The server's default CSP (`security_headers_middleware`) is
 - **Duration.** When a non-live source loads and the `playback` resource has
   no `durationSeconds` (usual for direct URLs), the player's duration is sent
   once per media with `PUT /api/rooms/{room}/media/{media}/duration`. The
-  server keeps the first plausible value; failures are not retried.
+  server keeps the first plausible value from the room creator or a TV they
+  paired, and ignores everyone else's; failures are not retried.
 
 Choices made where the spec was ambiguous (also noted in the code):
 

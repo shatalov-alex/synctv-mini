@@ -1,0 +1,18 @@
+# SyncTV Mini on top of docker-compose.yml.
+#
+#   cp docker-compose.override.example.yml docker-compose.override.yml
+#
+# Docker Compose reads docker-compose.override.yml automatically. Build the
+# image and the client first (see README.md).
+services:
+  synctv:
+    image: synctv-mini:latest
+    environment:
+      # The lite client, built into lite-client/dist and served by the server.
+      SYNCTV_SERVER_WEB_UI_DIRECTORY: /srv/lite-client
+      # The public HTTPS address of this server (the tunnel's hostname).
+      SYNCTV_TELEGRAM_WEB_APP_URL: https://tv.example.com
+      SYNCTV_LIVESTREAM_ENABLED: "false"
+    volumes:
+      # Rebuilding the client updates the app without restarting the server.
+      - ./lite-client/dist:/srv/lite-client:ro
