@@ -453,7 +453,9 @@ dev-smoke: ## Run real CLI/curl smoke tests against the local dev stack.
 
 # Local CI. GitHub runs none; `make release` runs ci-full before publishing.
 .PHONY: ci ci-full lite-client-check
-# Some tests create throwaway git repositories; keep personal git hooks and signing out of them.
+# Tests run under cargo-nextest, as upstream's CI did: Docker-backed tests take a lock per
+# process and need one process per test. Some tests create throwaway git repositories, so
+# personal git hooks and signing are kept out of them.
 CI_TEST_ENV ?= GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 lite-client-check: ## Type-check, test and build the lite client (into a temp dir, not lite-client/dist).
 	cd lite-client && pnpm install --frozen-lockfile && pnpm typecheck && pnpm test
@@ -465,11 +467,12 @@ ci: ## Run the checks CI used to run: format, lint, SQLx, proto, dependencies, t
 	$(MAKE) check-all-targets
 	$(MAKE) proto-freshness
 	$(MAKE) deny-check
-	$(CI_TEST_ENV) SQLX_OFFLINE=true $(CARGO) test $(CARGO_WORKSPACE_BUILD_ARGS) --no-fail-fast
+	$(CI_TEST_ENV) $(MAKE) nextest-default
+	$(CI_TEST_ENV) $(MAKE) doc-test
 	$(MAKE) lite-client-check
 
 ci-full: ci ## Everything in ci, plus the ignored tests that start PostgreSQL in Docker.
-	$(CI_TEST_ENV) SQLX_OFFLINE=true $(CARGO) test $(CARGO_WORKSPACE_BUILD_ARGS) --no-fail-fast -- --ignored
+	$(CI_TEST_ENV) $(MAKE) nextest-ignored
 
 .PHONY: release
 release: ## Publish a release: make release VERSION=x.y.z (runs ci-full, tags, pushes, creates the GitHub release).
