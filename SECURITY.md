@@ -1,33 +1,54 @@
 # Security Policy
 
-## Supported Versions
+## Supported versions
 
-SyncTV is currently developed on the main branch. Until stable release branches are published, security fixes target the current main branch and the latest published release, if one exists.
+Security fixes go into `main` and the latest `mini-v*` release. Older releases aren't
+patched; update to the latest one.
 
-## Reporting a Vulnerability
+| Version | Supported |
+|---|---|
+| Latest `mini-v*` release | Yes |
+| `main` | Yes |
+| Older releases | No |
 
-Do not open a public issue with exploit details, tokens, credentials, logs containing secrets, or private user data.
+## Reporting a vulnerability
 
-Preferred reporting path:
+Please don't open a public issue for a security problem.
 
-1. Open a private GitHub Security Advisory for this repository if the feature is available.
-2. If private advisories are not available, contact the maintainers through the repository first and ask for a private disclosure channel.
-3. Include affected version or commit, deployment mode, impact, reproduction steps, and any relevant logs after removing secrets.
+Report it privately through GitHub: open the repository's **Security** tab and choose
+**Report a vulnerability**. Only the maintainer sees the report.
 
-## Scope
+Include:
 
-Security reports may cover:
+- the release or commit you tested;
+- how the server is deployed (Docker Compose, tunnel or reverse proxy, settings you changed);
+- what an attacker can do, and the steps to reproduce it;
+- logs, with tokens, keys, cookies and Telegram data removed.
 
-- Authentication, authorization, MFA, OAuth2, passkeys, token handling, and account recovery.
-- Provider credentials, media proxying, request header handling, and SSRF-related behavior.
-- HTTP, gRPC, WebSocket, management, metrics, and cluster control surfaces.
-- Docker Compose, Helm, Kubernetes Ingress, and default deployment hardening.
-- Protobuf/API design issues that can lead to privilege escalation, data exposure, or denial of service.
+You'll get a reply within 7 days. Once the issue is confirmed, a fix is released as soon
+as practical, and you're credited in the advisory unless you'd rather not be.
 
-## Disclosure Expectations
+## What's in scope
 
-Give maintainers reasonable time to investigate, patch, and publish guidance before public disclosure. Avoid sharing exploit code or live-service targets unless maintainers explicitly request controlled reproduction details.
+- Telegram sign-in, sessions and tokens.
+- Invite links, room membership and roles: guests acting beyond their role, or removed
+  members getting back in.
+- TV pairing.
+- The service API and its key.
+- Media proxying and requests the server makes on a user's behalf, including SSRF.
+- The default Docker Compose setup and the settings in the example files.
 
-## Handling Secrets
+Problems in code this fork hasn't changed are usually upstream's too. Report those to
+[SyncTV](https://github.com/synctv-org/synctv/security) as well, so every user gets the fix.
 
-If a report includes accidental secrets, assume they are compromised. Rotate JWT secrets, OPAQUE setup secrets, provider tokens, OAuth2 client secrets, SMTP passwords, management tokens, and credential encryption keys according to the blast radius.
+## If a secret leaked
+
+Assume it's compromised and replace it:
+
+- **Bot token:** revoke it in [@BotFather](https://t.me/BotFather) (`/revoke`).
+- **`SYNCTV_SERVICE_API_KEY`:** generate a new one and update the scripts that use it.
+- **`SYNCTV_JWT_SECRET`:** replace it; everyone signs in again.
+- **Database or Redis passwords:** change them in the `.env.*` files and in the containers.
+
+Don't change the `SYNCTV_SECURITY_*_ENCRYPTION_KEY` values unless they leaked: data
+stored with them can't be read after a change.

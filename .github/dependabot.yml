@@ -37,3 +37,18 @@ updates:
         applies-to: security-updates
         patterns:
           - "*"
+
+  - package-ecosystem: npm
+    directory: "/lite-client"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: lite-client
+    groups:
+      lite-client-non-breaking:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch

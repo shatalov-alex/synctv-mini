@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security problem
+    url: https://github.com/shatalov-alex/synctv-mini/security/advisories/new
+    about: Report vulnerabilities privately, not in a public issue.
+  - name: Upstream SyncTV
+    url: https://github.com/synctv-org/synctv/issues
+    about: For the sync engine, media providers and server code this fork hasn't changed.
