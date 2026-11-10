@@ -15,6 +15,16 @@ seek or switch episodes on one phone, and every screen follows.
 It runs on one machine, such as a home computer, with Docker. A Cloudflare tunnel makes
 it reachable from anywhere without opening ports on your router.
 
+<p align="center">
+  <img src=".github/screenshots/room-dark.jpg" width="260" alt="A room in the Telegram Mini App, dark theme: the video player, playback controls and the playlist">
+  &nbsp;
+  <img src=".github/screenshots/room-light.jpg" width="260" alt="The same room in Telegram's light theme">
+  &nbsp;
+  <img src=".github/screenshots/rooms-dark.png" width="260" alt="The room list, with a field to create a new room">
+</p>
+<p align="center"><sub>A room in Telegram's dark and light themes, and the room list. The app takes its colors from Telegram.
+Film: <a href="https://mango.blender.org/">Tears of Steel</a> © Blender Foundation, CC BY 3.0.</sub></p>
+
 ## What you get
 
 - **A Telegram Mini App client** (`lite-client/`) that is small and fast, about 38 KB of
