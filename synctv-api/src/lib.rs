@@ -1,6 +1,7 @@
 //! Public facade for SyncTV API services.
 
 pub use synctv_api_common::*;
+#[cfg(feature = "grpc")]
 pub use synctv_api_grpc::{
     build_axum_router, serve, AdminServiceImpl, ClientServiceImpl, ClientServiceOptions,
     ClusterAuthInterceptor, GrpcServerOptions,

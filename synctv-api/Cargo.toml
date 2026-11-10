@@ -6,40 +6,42 @@ authors.workspace = true
 license.workspace = true
 
 [features]
-default = ["tls-aws-lc", "tls-webpki-roots"]
+default = ["tls-aws-lc", "tls-webpki-roots", "grpc"]
+# The gRPC API and the cluster server. Off: REST and WebSocket only, single node.
+grpc = ["dep:synctv-api-grpc"]
 web-ui = ["synctv-api-http/web-ui"]
 web-ui-dynamic = ["synctv-api-http/web-ui-dynamic"]
 openapi = ["synctv-api-common/openapi", "synctv-api-http/openapi"]
 k8s = [
     "synctv-api-common/k8s",
     "synctv-api-http/k8s",
-    "synctv-api-grpc/k8s",
+    "synctv-api-grpc?/k8s",
 ]
 tls-aws-lc = [
     "synctv-api-common/tls-aws-lc",
     "synctv-api-http/tls-aws-lc",
-    "synctv-api-grpc/tls-aws-lc",
+    "synctv-api-grpc?/tls-aws-lc",
 ]
 tls-ring = [
     "synctv-api-common/tls-ring",
     "synctv-api-http/tls-ring",
-    "synctv-api-grpc/tls-ring",
+    "synctv-api-grpc?/tls-ring",
 ]
 tls-webpki-roots = [
     "synctv-api-common/tls-webpki-roots",
     "synctv-api-http/tls-webpki-roots",
-    "synctv-api-grpc/tls-webpki-roots",
+    "synctv-api-grpc?/tls-webpki-roots",
 ]
 tls-native-roots = [
     "synctv-api-common/tls-native-roots",
     "synctv-api-http/tls-native-roots",
-    "synctv-api-grpc/tls-native-roots",
+    "synctv-api-grpc?/tls-native-roots",
 ]
 
 [dependencies]
 synctv-api-common = { workspace = true, default-features = false }
 synctv-api-http = { workspace = true, default-features = false }
-synctv-api-grpc = { workspace = true, default-features = false }
+synctv-api-grpc = { workspace = true, default-features = false, optional = true }
 
 [lints]
 workspace = true

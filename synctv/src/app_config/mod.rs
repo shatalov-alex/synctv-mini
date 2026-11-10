@@ -1084,6 +1084,9 @@ impl Default for LivestreamWebRtcConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct LivestreamConfig {
+    /// Run live streaming (RTMP ingest, live HLS/FLV, WebRTC). Off: no RTMP port is opened
+    /// and live sources cannot be added or played.
+    pub enabled: bool,
     pub rtmp_port: u16,
     pub public_rtmp_host: String,
     pub public_webrtc_base_url: String,
@@ -1107,6 +1110,7 @@ pub struct LivestreamConfig {
 impl Default for LivestreamConfig {
     fn default() -> Self {
         Self {
+            enabled: true,
             rtmp_port: 1935,
             public_rtmp_host: String::new(),
             public_webrtc_base_url: String::new(),
