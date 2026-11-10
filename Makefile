@@ -465,11 +465,11 @@ ci: ## Run the checks CI used to run: format, lint, SQLx, proto, dependencies, t
 	$(MAKE) check-all-targets
 	$(MAKE) proto-freshness
 	$(MAKE) deny-check
-	$(CI_TEST_ENV) SQLX_OFFLINE=true $(CARGO) test $(CARGO_WORKSPACE_BUILD_ARGS)
+	$(CI_TEST_ENV) SQLX_OFFLINE=true $(CARGO) test $(CARGO_WORKSPACE_BUILD_ARGS) --no-fail-fast
 	$(MAKE) lite-client-check
 
 ci-full: ci ## Everything in ci, plus the ignored tests that start PostgreSQL in Docker.
-	$(CI_TEST_ENV) SQLX_OFFLINE=true $(CARGO) test $(CARGO_WORKSPACE_BUILD_ARGS) -- --ignored
+	$(CI_TEST_ENV) SQLX_OFFLINE=true $(CARGO) test $(CARGO_WORKSPACE_BUILD_ARGS) --no-fail-fast -- --ignored
 
 .PHONY: release
 release: ## Publish a release: make release VERSION=x.y.z (runs ci-full, tags, pushes, creates the GitHub release).
