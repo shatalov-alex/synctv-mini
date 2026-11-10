@@ -37,7 +37,7 @@ make ci        # format, Clippy, SQLx, proto, cargo-deny, tests, client
 make ci-full   # the same, plus the tests that start PostgreSQL in Docker
 ```
 
-`make ci` needs `cargo-deny` (`cargo install cargo-deny --locked`). Mention in the pull
+`make ci` needs `cargo-nextest` and `cargo-deny` (`cargo install cargo-nextest cargo-deny --locked`). Mention in the pull
 request which of the two you ran.
 
 The steps one by one, server:
