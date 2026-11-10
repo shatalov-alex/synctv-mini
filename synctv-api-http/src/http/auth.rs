@@ -278,6 +278,20 @@ pub async fn login_with_telegram(
     Ok(Json(response))
 }
 
+/// The Telegram Mini App the client links to: bot username and app short name. Public: the
+/// links it builds are public too.
+pub async fn telegram_mini_app(
+    State(state): State<AppState>,
+) -> Json<synctv_api_common::impls::client::TelegramMiniApp> {
+    Json(
+        state
+            .shared_api_runtime
+            .client_api
+            .telegram_mini_app()
+            .await,
+    )
+}
+
 /// Identify an account and return its currently usable primary login methods.
 #[cfg_attr(
     feature = "openapi",

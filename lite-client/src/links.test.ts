@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { inviteLink, pairLink, parseStartParam, telegramShareLink } from './links';
+import { inviteLink, loadMiniApp, pairLink, parseStartParam, telegramShareLink } from './links';
 import { matchRoute } from './router';
 import { formatExpiry, formatTime } from './format';
 import { tvAction } from './pages/tvKeys';
@@ -69,5 +69,24 @@ describe('tv remote keys', () => {
     expect(tvAction(undefined, 10252)).toBe('toggle');
     expect(tvAction(undefined, 415)).toBe('play');
     expect(tvAction('a', 65)).toBeNull();
+  });
+});
+
+describe('loadMiniApp', () => {
+  const reply = (body: unknown, ok = true) =>
+    (async () => ({ ok, json: async () => body })) as unknown as typeof fetch;
+
+  it('takes the bot from the server', async () => {
+    const config = { botUsername: 'build_bot', appShortName: '' };
+    await loadMiniApp(reply({ botUsername: '@server_bot', appShortName: 'watch' }), config);
+    expect(config).toEqual({ botUsername: 'server_bot', appShortName: 'watch' });
+  });
+
+  it('keeps the build-time values when the server has no bot or fails', async () => {
+    const config = { botUsername: 'build_bot', appShortName: 'app' };
+    await loadMiniApp(reply({ botUsername: '', appShortName: '' }), config);
+    await loadMiniApp(reply({}, false), config);
+    await loadMiniApp((async () => { throw new Error('offline'); }) as unknown as typeof fetch, config);
+    expect(config).toEqual({ botUsername: 'build_bot', appShortName: 'app' });
   });
 });

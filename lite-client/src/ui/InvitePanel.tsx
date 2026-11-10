@@ -41,7 +41,7 @@ export function InvitePanel({ api, roomId }: { api: ApiClient; roomId: string })
       const res = await createInvite(api, roomId, { ttlSeconds: ttl, maxUses });
       const url = res.token ? inviteLink(res.token) : null;
       if (!url) {
-        setError('Set VITE_TG_BOT_USERNAME and VITE_TG_APP_SHORT_NAME at build time to make invite links.');
+        setError('The server does not know its Telegram bot yet, so it cannot make invite links. Reload and try again.');
       }
       setLink(url || '');
       await reload();

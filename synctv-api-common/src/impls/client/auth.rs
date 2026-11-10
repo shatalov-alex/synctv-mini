@@ -14,6 +14,14 @@ use synctv_core::service::{
 use synctv_proto::client::{RegisterWithDirectPasswordRequest, StartOpaqueRegistrationRequest};
 use webauthn_rs::prelude::{CreationChallengeResponse, RequestChallengeResponse};
 
+/// What [`ClientApiImpl::telegram_mini_app`] returns.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TelegramMiniApp {
+    pub bot_username: String,
+    pub app_short_name: String,
+}
+
 pub struct PasskeyRegistrationChallenge {
     pub session_id: String,
     pub options: CreationChallengeResponse,
@@ -441,6 +449,41 @@ impl ClientApiImpl {
             .map_err(ApiError::from)?;
 
         login_outcome_to_proto(outcome, &self.public_id_codec)
+    }
+
+    /// The Telegram Mini App the client links to (invites, TV pairing). The bot username
+    /// comes from config, else from `getMe` once; empty while Telegram is off or unreachable.
+    pub async fn telegram_mini_app(&self) -> TelegramMiniApp {
+        let telegram = &self.runtime_settings.telegram;
+        let bot_username = if !telegram.bot_username.is_empty() {
+            telegram.bot_username.clone()
+        } else if telegram.bot_token.is_empty() {
+            String::new()
+        } else {
+            telegram
+                .resolved_bot_username
+                .get_or_try_init(|| async {
+                    let api = synctv_core::service::telegram_bot::TelegramBotApi::new(
+                        &telegram.api_base_url,
+                        &telegram.bot_token,
+                    )
+                    .map_err(|error| error.to_string())?;
+                    let me = api.get_me().await.map_err(|error| error.to_string())?;
+                    me.username
+                        .filter(|name| !name.is_empty())
+                        .ok_or_else(|| "getMe returned no username".to_string())
+                })
+                .await
+                .cloned()
+                .unwrap_or_else(|error| {
+                    tracing::warn!(error = %error, "Could not look up the Telegram bot username");
+                    String::new()
+                })
+        };
+        TelegramMiniApp {
+            bot_username,
+            app_short_name: telegram.mini_app_short_name.clone(),
+        }
     }
 
     pub async fn login_with_telegram_with_control(

@@ -363,6 +363,7 @@ fn register_extracted_auth_routes() -> Router<AppState> {
         )
         .route("/api/auth/login/start", post(auth::start_login))
         .route("/api/auth/telegram", post(auth::login_with_telegram))
+        .route("/api/telegram/mini-app", get(auth::telegram_mini_app))
         .route(
             "/api/invites/redeem",
             post(room_invites::redeem_room_invite),
