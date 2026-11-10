@@ -590,3 +590,31 @@ async fn plain_users_cannot_create_rooms_when_the_server_forbids_it() {
         "{result:?}"
     );
 }
+
+#[tokio::test]
+#[ignore = "Requires Docker-backed PostgreSQL"]
+async fn only_the_creator_and_their_tvs_speak_for_the_room() {
+    let f = Box::pin(setup()).await;
+    let guest = f
+        .users
+        .find_or_create_telegram_user(&telegram_user(2, "Olena"))
+        .await
+        .checked("guest");
+    let (invite, _token) = f
+        .rooms
+        .create_room_invite(f.room.id, f.creator.id, None, Some(1))
+        .await
+        .checked("invite");
+    f.rooms
+        .admit_invited_member(&invite, guest.id, "Olena".to_string())
+        .await
+        .checked("admit guest");
+    let creators_tv = pair_tv(&f, f.creator.id).await;
+    let guests_tv = pair_tv(&f, guest.id).await;
+
+    let speaks = |user| f.rooms.is_creator_or_creators_tv(f.room.id, user);
+    assert!(speaks(f.creator.id).await.checked("creator"));
+    assert!(speaks(creators_tv).await.checked("creator's TV"));
+    assert!(!speaks(guest.id).await.checked("guest"));
+    assert!(!speaks(guests_tv).await.checked("guest's TV"));
+}

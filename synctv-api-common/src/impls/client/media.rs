@@ -1787,6 +1787,19 @@ impl ClientApiImpl {
         crate::impls::validate_proto_request(&req)?;
         let rid = self.parse_room_id(room_id)?;
         let media_id = crate::impls::proto_validated_media_id(req.media_id, &self.public_id_codec)?;
+        // The first stored length is permanent, so only the room creator's own players set it:
+        // a guest's broken or tampered player must not mislead everyone's timeline.
+        if !self
+            .room_service
+            .is_creator_or_creators_tv(rid, *user_id)
+            .await
+            .map_err(ApiError::from)?
+        {
+            return Ok(synctv_proto::client::ReportMediaDurationResponse {
+                stored: false,
+                duration_seconds: None,
+            });
+        }
         let reported = self
             .room_service
             .playback_service()

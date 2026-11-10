@@ -296,6 +296,27 @@ impl RoomService {
         Ok(())
     }
 
+    /// Whether `user_id` is the room's creator or a live TV the creator paired to it: the
+    /// devices whose player reports the room trusts over everyone else's.
+    pub async fn is_creator_or_creators_tv(
+        &self,
+        room_id: RoomId,
+        user_id: UserId,
+    ) -> Result<bool> {
+        let room = self
+            .room_repo
+            .get_by_id(&room_id)
+            .await?
+            .ok_or_else(|| Error::NotFound("Room not found".to_string()))?;
+        if room.created_by == user_id {
+            return Ok(true);
+        }
+        let tvs = self.tv_devices().list_active_for_room(&room_id).await?;
+        Ok(tvs
+            .iter()
+            .any(|tv| tv.user_id == user_id && tv.paired_by == Some(room.created_by)))
+    }
+
     /// Live TVs paired to the room, for its people: a phone can only be the remote of a TV
     /// that exists. Not for the TVs themselves, and only the creator manages them.
     pub async fn list_tv_devices(
