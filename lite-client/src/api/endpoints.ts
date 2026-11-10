@@ -212,11 +212,14 @@ export function updatePlayback(api: ApiClient, roomId: string, update: PlaybackU
 export function createInvite(
   api: ApiClient,
   roomId: string,
+  /** ttlSeconds 0 = never expires; maxUses 0 = anyone with the link. Omitted = server default. */
   opts: { ttlSeconds?: number; maxUses?: number } = {},
 ): Promise<CreateInviteResponse> {
-  const body: Record<string, number> = {};
-  if (opts.ttlSeconds) body.ttlSeconds = opts.ttlSeconds;
-  if (opts.maxUses) body.maxUses = opts.maxUses;
+  const body: Record<string, number | boolean> = {};
+  if (opts.ttlSeconds === 0) body.noExpiry = true;
+  else if (opts.ttlSeconds) body.ttlSeconds = opts.ttlSeconds;
+  if (opts.maxUses === 0) body.unlimitedUses = true;
+  else if (opts.maxUses) body.maxUses = opts.maxUses;
   return api.request('POST', `/api/rooms/${enc(roomId)}/invites`, body);
 }
 
