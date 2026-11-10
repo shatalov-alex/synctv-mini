@@ -29,9 +29,18 @@ pnpm dev
 
 ## Checks
 
-Run these before you open a pull request. CI runs them too.
+The repository runs no CI on GitHub; the checks run on your machine. Before you open a
+pull request, run:
 
-Server:
+```sh
+make ci        # format, Clippy, SQLx, proto, cargo-deny, tests, client
+make ci-full   # the same, plus the tests that start PostgreSQL in Docker
+```
+
+`make ci` needs `cargo-deny` (`cargo install cargo-deny --locked`). Mention in the pull
+request which of the two you ran.
+
+The steps one by one, server:
 
 ```sh
 cargo fmt --all
@@ -71,6 +80,18 @@ Commit the changed `.sqlx/` files with your change.
 - Explain what the change does for the user, and how you checked it.
 - Don't commit secrets, `.env.*` files (other than the examples), or your own domain and
   bot names.
+
+## Releasing
+
+For maintainers. Move the `Unreleased` entries in `CHANGELOG.md` into a new
+`## [x.y.z] - date` section, commit it on `main`, then run:
+
+```sh
+make release VERSION=x.y.z
+```
+
+It runs `make ci-full` and stops if anything fails. Otherwise it tags `mini-vx.y.z`, pushes
+`main` and the tag, and creates the GitHub release with that CHANGELOG section as notes.
 
 ## Security problems
 

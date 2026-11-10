@@ -8,8 +8,7 @@
 
 ## Checklist
 
-- [ ] `cargo fmt`, `cargo clippy` and the tests pass
-- [ ] Client changes: `pnpm typecheck && pnpm test && pnpm build` pass
+- [ ] `make ci` passes (or `make ci-full` for changes to queries, rooms or auth)
 - [ ] Changed queries or migrations: `.sqlx/` is regenerated
 - [ ] User-facing changes are added to `CHANGELOG.md` under Unreleased
 - [ ] No secrets, `.env` files, or personal domains and bot names

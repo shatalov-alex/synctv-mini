@@ -1,6 +1,5 @@
 # SyncTV Mini
 
-[![CI](https://github.com/shatalov-alex/synctv-mini/actions/workflows/ci.yml/badge.svg)](https://github.com/shatalov-alex/synctv-mini/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/shatalov-alex/synctv-mini?label=release)](https://github.com/shatalov-alex/synctv-mini/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Based on SyncTV 1.0.14](https://img.shields.io/badge/based%20on-SyncTV%201.0.14-informational)](https://github.com/synctv-org/synctv/releases/tag/v1.0.14)
@@ -212,8 +211,11 @@ the server reads `lite-client/dist` from disk.
 
 ## Development
 
-- Server: Rust (see `rust-toolchain.toml`). Run `cargo test --workspace`. Tests marked
-  `#[ignore]` need Docker, because they start their own PostgreSQL.
+- Server: Rust (see `rust-toolchain.toml`). Tests marked `#[ignore]` need Docker,
+  because they start their own PostgreSQL.
+- Checks run locally, not on GitHub. `make ci` runs formatting, Clippy, the SQLx and proto
+  checks, cargo-deny, the tests and the client checks; `make ci-full` adds the Docker
+  tests. `make release VERSION=x.y.z` runs `ci-full` first and publishes only if it passes.
 - Client: see [lite-client/README.md](lite-client/README.md).
 - `helm/` and `docs/` (except `docs/service-api.md`) are upstream's Kubernetes chart and
   documentation site. They are kept to make upstream merges easy, but this fork doesn't
