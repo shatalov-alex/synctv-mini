@@ -60,7 +60,7 @@ The server is SyncTV's (Rust, PostgreSQL, Redis), with these changes:
 
 Chat, voice chat and the admin panel still exist on the server, but the Mini App doesn't
 use them. Every change is a setting or a build option, so you can switch any of it back.
-The fork follows upstream releases: v1.0.14 is merged.
+The fork follows upstream: v1.0.14 and the fixes made after it are merged.
 
 ## What you need
 

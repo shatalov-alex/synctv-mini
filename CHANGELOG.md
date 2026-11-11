@@ -6,6 +6,23 @@ All notable changes to SyncTV Mini are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-11-11
+
+Based on SyncTV 1.0.14, plus the upstream fixes made after it, up to
+[d2d4e650](https://github.com/synctv-org/synctv/commit/d2d4e650).
+
+### Fixed
+
+- Guests can play Bilibili videos with the room's shared Bilibili account
+  ([synctv#539](https://github.com/synctv-org/synctv/pull/539)).
+- When a proxied video link fails, the player gets the source's own error instead of a
+  generic "service unavailable" ([synctv#541](https://github.com/synctv-org/synctv/pull/541)).
+- `make release` creates the GitHub release in this repository, not in upstream SyncTV.
+
+### Changed
+
+- Dependencies updated from upstream ([synctv#542](https://github.com/synctv-org/synctv/pull/542)).
+
 ## [1.0.0] - 2026-11-10
 
 Based on SyncTV 1.0.14.
@@ -51,5 +68,6 @@ Based on SyncTV 1.0.14.
 - Plain accounts (guests, TVs, sign-ups) can't create rooms, so they can't make the
   server fetch addresses of their choosing.
 
-[Unreleased]: https://github.com/shatalov-alex/synctv-mini/compare/mini-v1.0.0...HEAD
+[Unreleased]: https://github.com/shatalov-alex/synctv-mini/compare/mini-v1.0.1...HEAD
+[1.0.1]: https://github.com/shatalov-alex/synctv-mini/compare/mini-v1.0.0...mini-v1.0.1
 [1.0.0]: https://github.com/shatalov-alex/synctv-mini/releases/tag/mini-v1.0.0
