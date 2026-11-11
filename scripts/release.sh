@@ -19,6 +19,10 @@ cd "$(git rev-parse --show-toplevel)"
 [[ -z "$(git status --porcelain)" ]] || { echo "The working tree has changes; commit or stash them." >&2; exit 1; }
 ! git rev-parse -q --verify "refs/tags/$tag" >/dev/null || { echo "$tag already exists." >&2; exit 1; }
 
+# gh picks the parent repository for a fork, so name ours explicitly (owner/name from origin).
+repo="$(git remote get-url origin | sed -E 's#^(https://github\.com/|git@github\.com:)##; s#\.git$##')"
+[[ "$repo" =~ ^[^/]+/[^/]+$ ]] || { echo "Can't read owner/name from origin: $repo" >&2; exit 1; }
+
 notes="$(awk -v v="$version" '
   $0 ~ "^## \\[" v "\\]" { on = 1; next }
   on && /^## \[/ { exit }
@@ -37,4 +41,4 @@ git tag -a "$tag" -m "SyncTV Mini $version"
 git push origin main "refs/tags/$tag"
 
 echo "== creating the GitHub release"
-gh release create "$tag" --verify-tag --title "SyncTV Mini $version" --notes "$notes"
+gh release create "$tag" -R "$repo" --verify-tag --title "SyncTV Mini $version" --notes "$notes"
